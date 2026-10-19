@@ -9,3 +9,11 @@ export const chatRateLimit = new Ratelimit({
   prefix: "knowflow:chat",
   analytics: true,
 });
+
+// 上传限制
+
+export const uploadRateLimit = new Ratelimit({
+  redis,
+  limiter: Ratelimit.slidingWindow(20, "1 m"),
+  analytics: true,
+});

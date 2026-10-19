@@ -141,7 +141,7 @@ export async function createEmbedding(input: string): Promise<number[]> {
  * @param right 向量 B
  * @returns     相似度（0-1，越大越相似）
  */
-function cosineSimilarity(left: number[], right: number[]): number {
+export function cosineSimilarity(left: number[], right: number[]): number {
   // ① 检查长度是否一致（不一致无法比较）
   if (left.length !== right.length || left.length === 0) return 0;
 

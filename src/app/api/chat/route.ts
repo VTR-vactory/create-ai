@@ -5,12 +5,13 @@ import {
   type UIMessage,
   toUIMessageStream,
   createUIMessageStreamResponse,
+  consumeStream,
 } from "ai";
 import { z } from "zod";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { findRelevantChunks, findRelevantChunksForDocuments } from "@/lib/rag";
-import { chatRateLimit } from "@/lib/ratelimit";
+import { chatRateLimit, uploadRateLimit } from "@/lib/ratelimit";
 
 const AI = createOpenAICompatible({
   name: "zhipu",
@@ -36,7 +37,7 @@ function isUIMessage(value: unknown): value is UIMessage {
 // 创建校验器
 const chatSchema = z.object({
   chatId: z.string().min(1),
-  messages: z.array(z.custom<UIMessage>(isUIMessage)).min(1).max(30),
+  messages: z.array(z.custom<UIMessage>(isUIMessage)).min(1),
   // 本轮随消息附带的文档 id（先经 /api/documents 上传获得）
   attachmentIds: z.array(z.string().cuid()).max(10).default([]),
 });
@@ -60,10 +61,32 @@ export async function POST(request: Request) {
       { status: 401 },
     );
   }
+  // ⚠️ 关键：在调用 request.formData() 解析大文件前，先做限流检查
+  const limit = await uploadRateLimit.limit(session.user.id);
+  if (!limit.success) {
+    return Response.json(
+      {
+        error: { code: "RATE_LIMITED", message: "上传过于频繁，请稍后再试。" },
+      },
+      { status: 429 },
+    );
+    // 如果你需要返回 Retry-After 头，可以改用 NextResponse.json 并附带 headers
+  }
+
   const userId = session.user.id;
   try {
     // 格式校验
     const parsed = chatSchema.safeParse(await request.json());
+    console.log(
+      "chat parsed",
+      parsed.success
+        ? {
+            chatId: parsed.data.chatId,
+            messages: parsed.data.messages.length,
+            attachmentIds: parsed.data.attachmentIds,
+          }
+        : parsed.error.issues,
+    );
     if (!parsed.success) {
       return Response.json(
         {
@@ -191,7 +214,7 @@ export async function POST(request: Request) {
     // 流式生成  调用大模型
     const result = streamText({
       model: AI("glm-4-flash"),
-      system: systemPrompt,
+      instructions: systemPrompt, // v7 推荐用 instructions 替代 system[citation:10][citation:13]
       messages: await convertToModelMessages(modelMessages.slice(-12)),
       abortSignal: request.signal,
     });
@@ -300,7 +323,10 @@ export async function POST(request: Request) {
         return "模型暂时不可用，请稍后重试。";
       },
     });
-    return createUIMessageStreamResponse({ stream });
+    return createUIMessageStreamResponse({
+      stream,
+      consumeSseStream: consumeStream,
+    });
   } catch (error) {
     console.error("chat failed", error);
     return Response.json(

@@ -39,7 +39,7 @@ export async function handleAuth(
       data: {
         name: parsed.data.name,
         email: parsed.data.email.toLowerCase(),
-        passwordHash: await bcrypt.hash(parsed.data.password, 10),
+        passwordHash: await bcrypt.hash(parsed.data.password, 12),
       },
     });
   }

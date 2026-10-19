@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
@@ -54,6 +55,7 @@ model Document {
   size        Int?
   contentHash String?
   status      DocumentStatus  @default(PROCESSING)
+  failedChunks  Int           @default(0)
   error       String?
   userId      String
   chatId      String?
@@ -61,8 +63,8 @@ model Document {
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
   user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  chat        Chat?           @relation(fields: [chatId], references: [id], onDelete: SetNull)
-  message     Message?        @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  chat        Chat?           @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  message     Message?        @relation(fields: [messageId], references: [id], onDelete: Cascade)
   chunks      DocumentChunk[]
 
   @@unique([userId, contentHash])
@@ -70,6 +72,8 @@ model Document {
   @@index([chatId])
   @@index([messageId])
 }
+
+
 
 model DocumentChunk {
   id         String   @id @default(cuid())
@@ -91,4 +95,5 @@ enum DocumentStatus {
   PROCESSING
   READY
   FAILED
+  PARTIAL
 }

@@ -109,12 +109,13 @@ function ChatContent({ user }: { user: ChatUser }) {
     }
   }
   async function selectChat(id: string) {
-    // const data = await getJson<string>(`api/chats/${id}`);
     try {
       setError(null);
       const detail = await getJson<ChatDetail>(`/api/chats/${id}`);
       setChatId(id);
       setMessages(detail.messages.map(toUiMessage));
+      // 👇 新增：切换会话时清空上一次的重试附件引用
+      lastAttachmentIdsRef.current = [];
       // 历史恢复：按消息 id 建立附件映射
       setAttachments(
         Object.fromEntries(
@@ -135,6 +136,11 @@ function ChatContent({ user }: { user: ChatUser }) {
     try {
       const chat = await postJson<ChatSummary>("/api/chats", {});
       setChats((prev) => [chat, ...prev]);
+      // 👇 新增：新建会话时同样清空
+      lastAttachmentIdsRef.current = [];
+      // 👇 顺手修复你之前的逻辑小瑕疵：给 selectChat 加上 await，保证顺序
+      await selectChat(chat.id);
+
       selectChat(chat.id);
       setMessages([]);
       setError(null);
