@@ -6,6 +6,10 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { indexDocument } from "@/lib/documents";
 import { uploadRateLimit } from "@/lib/ratelimit";
+
+// 上传后要逐块做 embedding，可能较久（Hobby 上限 60s）
+export const maxDuration = 60;
+
 const MAX_SIZE = 1024 * 1024;
 const MAX_TOTAL_SIZE = 4 * 1024 * 1024;
 const ALLOWED_TEXT_EXT = [".txt", ".md", ".markdown", ".csv", ".json", ".log"];

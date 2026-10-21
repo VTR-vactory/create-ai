@@ -26,6 +26,9 @@ import { persistTurn } from "@/lib/chat/persist";
 import { createNoBasisResponse, NO_BASIS_TEXT } from "@/lib/chat/no-basis";
 import { chatRateLimit } from "@/lib/ratelimit";
 
+// Vercel 函数最长执行时间（流式生成可能较久；Hobby 上限为 60s）
+export const maxDuration = 60;
+
 const AI = createOpenAICompatible({
   name: "zhipu",
   apiKey: process.env.ZHIPU_API_KEY,
