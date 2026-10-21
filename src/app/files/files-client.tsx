@@ -5,7 +5,7 @@ import { getJson, postForm, deleteJson } from "@/lib/api";
 import Link from "next/link";
 import styles from "./page.module.scss";
 
-type FileStatus = "READY" | "PROCESSING" | "FAILED";
+type FileStatus = "READY" | "PROCESSING" | "PARTIAL" | "FAILED";
 
 type UploadedFile = {
   id: string;
@@ -14,23 +14,24 @@ type UploadedFile = {
   size: number;
   status: FileStatus;
   chunkCount: number;
+  failedChunks?: number;
   createdAt: string;
   preview?: string;
 };
 
 type FileFilter = "all" | "text" | "image";
 
-// 界面预览用的示例数据；接入 GET /api/documents 后替换。
-
 const STATUS_LABEL: Record<FileStatus, string> = {
   READY: "已就绪",
   PROCESSING: "处理中",
+  PARTIAL: "部分就绪",
   FAILED: "处理失败",
 };
 
 const STATUS_CLASS: Record<FileStatus, string> = {
   READY: styles.statusReady,
   PROCESSING: styles.statusProcessing,
+  PARTIAL: styles.statusPartial,
   FAILED: styles.statusFailed,
 };
 
@@ -350,6 +351,14 @@ export default function FilesClient({
                         <span>{file.chunkCount} 个片段</span>
                       </>
                     )}
+                    {file.failedChunks ? (
+                      <>
+                        <span>·</span>
+                        <span className={styles.failedHint}>
+                          {file.failedChunks} 块失败
+                        </span>
+                      </>
+                    ) : null}
                     {isImage(file) && (
                       <>
                         <span>·</span>

@@ -337,9 +337,18 @@
   background: #e9f0ff;
 }
 
+.statusPartial {
+  color: #8a5a00;
+  background: #fff4e0;
+}
+
 .statusFailed {
   color: var(--danger);
   background: var(--danger-soft);
+}
+
+.failedHint {
+  color: #8a5a00;
 }
 
 .cardMeta {

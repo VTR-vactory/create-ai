@@ -25,6 +25,7 @@ export async function GET() {
         size: true,
         mimeType: true,
         status: true,
+        failedChunks: true,
         _count: { select: { chunks: true } },
       },
       // orderBy 是 findMany 的顶层参数，不能写在 select 里
@@ -40,6 +41,7 @@ export async function GET() {
         mimeType: file.mimeType ?? "",
         status: file.status,
         chunkCount: file._count.chunks,
+        failedChunks: file.failedChunks,
       })),
     );
   } catch (error) {
