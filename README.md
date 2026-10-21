@@ -2,6 +2,8 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## 项目文档
 
+- [完整研发与交付流程](docs/workflow.md)：开发 → CI → 自动部署 → 迁移 → 验收 → 回滚。
+- [部署手册](docs/deployment.md)：Vercel + Neon 的环境变量与上线步骤。
 - [检索契约](docs/retrieval-contract.md)：回答问题时允许使用的数据来源、检索顺序、降级规则。
   **修改检索逻辑前必须先更新该文档。**
 
