@@ -1,4 +1,6 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import type { SourceLink } from "./types";
 
 export type PersistTurnInput = {
   chatId: string;
@@ -13,6 +15,8 @@ export type PersistTurnInput = {
   assistantContent: string;
   attachmentIds: string[];
   titleSeed: string;
+  /** 联网来源（没有则为空数组），随助手消息持久化以便历史可追溯 */
+  sources?: SourceLink[];
 };
 
 /**
@@ -36,7 +40,13 @@ export async function persistTurn(input: PersistTurnInput): Promise<void> {
     assistantContent,
     attachmentIds,
     titleSeed,
+    sources = [],
   } = input;
+
+  const sourcesJson: Prisma.InputJsonValue | typeof Prisma.DbNull =
+    sources.length
+      ? (sources as unknown as Prisma.InputJsonValue)
+      : Prisma.DbNull;
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -106,7 +116,7 @@ export async function persistTurn(input: PersistTurnInput): Promise<void> {
       if (existingAssistant) {
         await tx.message.update({
           where: { id: existingAssistant.id },
-          data: { content: assistantContent },
+          data: { content: assistantContent, sources: sourcesJson },
         });
       } else {
         await tx.message.create({
@@ -116,6 +126,7 @@ export async function persistTurn(input: PersistTurnInput): Promise<void> {
             content: assistantContent,
             position: userPosition + 1,
             clientId: assistantClientId,
+            sources: sourcesJson,
           },
         });
       }

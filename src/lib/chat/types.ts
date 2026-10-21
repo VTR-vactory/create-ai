@@ -11,5 +11,12 @@ export type WebResult = {
   content: string;
 };
 
+/** 展示给前端的来源引用（index 从 1 开始，与回答里的【1】对应） */
+export type SourceLink = {
+  index: number;
+  title: string;
+  url: string;
+};
+
 /** 本次回答命中哪一级数据源（与 docs/retrieval-contract.md 一致） */
 export type SourceTier = "attachment" | "user" | "web" | "none";

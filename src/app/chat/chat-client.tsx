@@ -8,11 +8,14 @@ import { signOut } from "next-auth/react";
 import { getJson, postJson, postForm, deleteJson, patchJson } from "@/lib/api";
 import styles from "./page.module.scss";
 
+type SourceLink = { index: number; title: string; url: string };
+
 type StoredMessage = {
   id: string;
   role: "USER" | "ASSISTANT";
   content: string;
   attachments?: { id: string; name: string; mimeType?: string | null }[];
+  sources?: SourceLink[] | null;
 };
 type ChatDetail = { id: string; title: string; messages: StoredMessage[] };
 
@@ -34,7 +37,83 @@ function toUiMessage(message: StoredMessage): UIMessage {
     id: message.id,
     role: message.role === "USER" ? "user" : "assistant",
     parts: [{ type: "text", text: message.content }],
+    metadata:
+      message.sources && message.sources.length
+        ? { sources: message.sources }
+        : undefined,
   };
+}
+
+function sourcesOf(message: UIMessage): SourceLink[] {
+  const metadata = message.metadata as { sources?: SourceLink[] } | undefined;
+  return Array.isArray(metadata?.sources) ? metadata.sources : [];
+}
+
+/** 把回答里的【1】/ [1] / Markdown 链接 / 裸 URL 渲染成可点击节点 */
+function renderRichText(text: string, sources: SourceLink[]) {
+  const nodes: React.ReactNode[] = [];
+  const pattern =
+    /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)|【(\d+)】|\[(\d+)\]|(https?:\/\/[^\s）)]+)/g;
+  let lastIndex = 0;
+
+  for (const match of text.matchAll(pattern)) {
+    const index = match.index ?? 0;
+    if (index > lastIndex) nodes.push(text.slice(lastIndex, index));
+
+    const [, label, url, citeFull, citeShort, bareUrl] = match;
+
+    if (label && url) {
+      nodes.push(
+        <a
+          key={`md-${index}`}
+          className={styles.messageLink}
+          href={url}
+          rel="noopener noreferrer"
+          target="_blank"
+        >
+          {label}
+        </a>,
+      );
+    } else if (citeFull || citeShort) {
+      const n = Number(citeFull ?? citeShort);
+      const source = sources.find((item) => item.index === n);
+      nodes.push(
+        source ? (
+          <a
+            key={`cite-${index}`}
+            className={styles.citation}
+            href={source.url}
+            rel="noopener noreferrer"
+            target="_blank"
+            title={source.title}
+          >
+            {n}
+          </a>
+        ) : (
+          <sup key={`cite-${index}`} className={styles.citation}>
+            {n}
+          </sup>
+        ),
+      );
+    } else if (bareUrl) {
+      nodes.push(
+        <a
+          key={`url-${index}`}
+          className={styles.messageLink}
+          href={bareUrl}
+          rel="noopener noreferrer"
+          target="_blank"
+        >
+          {bareUrl}
+        </a>,
+      );
+    }
+
+    lastIndex = index + match[0].length;
+  }
+
+  if (lastIndex < text.length) nodes.push(text.slice(lastIndex));
+  return nodes;
 }
 
 function textOf(message: UIMessage) {
@@ -612,6 +691,7 @@ function ChatContent({ user }: { user: ChatUser }) {
           )}
 
           {messages.map((message) => {
+            const messageSources = sourcesOf(message);
             return (
               <article
                 key={message.id}
@@ -619,7 +699,31 @@ function ChatContent({ user }: { user: ChatUser }) {
               >
                 <span>{message.role == "user" ? "Me" : "AI"}</span>
 
-                {textOf(message) ? <p>{textOf(message)}</p> : null}
+                {textOf(message) ? (
+                  <p>
+                    {message.role === "assistant"
+                      ? renderRichText(textOf(message), messageSources)
+                      : textOf(message)}
+                  </p>
+                ) : null}
+
+                {message.role === "assistant" && messageSources.length > 0 ? (
+                  <div className={styles.sources}>
+                    <span className={styles.sourcesLabel}>来源</span>
+                    {messageSources.map((source) => (
+                      <a
+                        key={source.index}
+                        className={styles.sourceItem}
+                        href={source.url}
+                        rel="noopener noreferrer"
+                        target="_blank"
+                        title={source.title}
+                      >
+                        [{source.index}] {source.title || source.url}
+                      </a>
+                    ))}
+                  </div>
+                ) : null}
                 {attachments[message.id]?.length ? (
                   <ul className={styles.msgFiles}>
                     {attachments[message.id].map((file) =>

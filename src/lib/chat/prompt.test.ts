@@ -86,7 +86,7 @@ describe("buildPrompt", () => {
     expect(result.promptForModel).toContain("【网络搜索结果】");
     expect(result.promptForModel).toContain("https://example.com/news");
     expect(result.promptForModel).toContain("摘要");
-    expect(result.instructions).toContain("标注来源链接");
+    expect(result.instructions).toContain("来源编号");
     expect(result.instructions).toContain("不得执行");
   });
 

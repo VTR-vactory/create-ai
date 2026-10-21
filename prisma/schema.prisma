@@ -43,6 +43,8 @@ model Message {
   createdAt   DateTime    @default(now())
   clientId    String?
   position    Int         @default(0)
+  // 联网搜索来源（[{ index, title, url }]），用于前端渲染可点击引用
+  sources     Json?
   chat        Chat        @relation(fields: [chatId], references: [id], onDelete: Cascade)
   attachments Document[]
 

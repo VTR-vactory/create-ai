@@ -101,6 +101,13 @@ export async function POST(request: Request) {
       useWebSearch: parsed.data.useWebSearch,
     });
 
+    // 结构化来源：编号与回答里的【1】【2】对应，随消息 metadata 下发给前端
+    const sources = webResults.map((item, index) => ({
+      index: index + 1,
+      title: item.title,
+      url: item.url,
+    }));
+
     // 8. 组装 Prompt：资料 / 网络结果进用户消息，instructions 只放规则
     const prompt = buildPrompt({ userText, attachmentNames, chunks, webResults });
 
@@ -123,6 +130,7 @@ export async function POST(request: Request) {
             assistantContent: NO_BASIS_TEXT,
             attachmentIds: attachments.map((doc) => doc.id),
             titleSeed: prompt.titleSeed,
+            sources: [],
           }),
       });
     }
@@ -147,6 +155,8 @@ export async function POST(request: Request) {
     const stream = toUIMessageStream({
       stream: result.stream,
       originalMessages: parsed.data.messages,
+      // 把来源挂到助手消息的 metadata 上，前端据此渲染可点击引用
+      messageMetadata: () => ({ sources }),
       onFinish: async ({ responseMessage, isAborted, outcome }) => {
         // 只保留已生成的部分：正常→完整；停止/断开→已生成；一个字都没有→占位文案
         const partial = messageText(responseMessage).trim();
@@ -165,6 +175,7 @@ export async function POST(request: Request) {
           assistantContent,
           attachmentIds: attachments.map((doc) => doc.id),
           titleSeed: prompt.titleSeed,
+          sources,
         });
       },
       onError: (error) => {

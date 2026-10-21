@@ -78,10 +78,12 @@ describe("persistTurn", () => {
       where: { id: "u1" },
       data: { content: "新问题" },
     });
-    expect(tx.message.update).toHaveBeenCalledWith({
-      where: { id: "a1" },
-      data: { content: "新回答" },
-    });
+    expect(tx.message.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "a1" },
+        data: expect.objectContaining({ content: "新回答" }),
+      }),
+    );
     expect(tx.message.create).not.toHaveBeenCalled();
 
     const seqCalls = tx.chat.update.mock.calls.filter(
