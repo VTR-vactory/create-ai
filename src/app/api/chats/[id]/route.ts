@@ -7,7 +7,12 @@ type RouteContext = { params: Promise<{ id: string }> };
 function serverError(scope: string, error: unknown) {
   console.error(`${scope} failed`, error);
   return Response.json(
-    { error: { code: "INTERNAL_ERROR", message: "服务暂时不可用，请稍后重试。" } },
+    {
+      error: {
+        code: "INTERNAL_ERROR",
+        message: "服务暂时不可用，请稍后重试。",
+      },
+    },
     { status: 500 },
   );
 }
@@ -84,7 +89,7 @@ export async function PATCH(request: Request, context: RouteContext) {
 
     const chat = await prisma.chat.update({
       where: { id },
-      data: { title: parsed.data.title },
+      data: { title: parsed.data.title, titleAuto: false },
       select: { id: true, title: true, updatedAt: true },
     });
 

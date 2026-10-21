@@ -109,6 +109,28 @@
     border-top: 1px solid rgb(255 255 255 / 8%);
   }
 
+  .asideLink {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 9px 12px;
+    border: 1px solid rgb(255 255 255 / 16%);
+    border-radius: var(--radius-sm);
+    color: #cbd6ec;
+    background: transparent;
+    font-size: 14px;
+    transition:
+      background 0.15s ease,
+      border-color 0.15s ease,
+      color 0.15s ease;
+
+    &:hover {
+      border-color: rgb(255 255 255 / 30%);
+      background: rgb(255 255 255 / 8%);
+      color: #fff;
+    }
+  }
+
   .userBox {
     display: flex;
     flex: 1;
@@ -490,6 +512,62 @@
     color: var(--text-muted);
     font-size: 12px;
   }
+}
+
+.composerLeft,
+.composerRight {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.webToggle {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  color: var(--text-muted);
+  background: var(--surface);
+  font-size: 12px;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease,
+    background 0.15s ease;
+
+  &:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+  }
+}
+
+.webToggleOn {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.webDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.5;
+}
+
+.webToggleOn .webDot {
+  opacity: 1;
+}
+
+.webHint {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .dragging {

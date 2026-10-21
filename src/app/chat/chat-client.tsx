@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, Suspense, useRef } from "react";
+import Link from "next/link";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
 import { signOut } from "next-auth/react";
@@ -65,6 +66,8 @@ function ChatContent({ user }: { user: ChatUser }) {
   const [error, setError] = useState<string | null>(null);
   const [online, setOnline] = useState(true);
   const [chatId, setChatId] = useState<string | null>(null);
+  // 联网开关：开启后，仅当本地知识库无命中时才会联网
+  const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const currentChat = chats.find((c) => c.id === chatId);
   const transport = useMemo(
     () =>
@@ -198,10 +201,16 @@ function ChatContent({ user }: { user: ChatUser }) {
       lastAttachmentIdsRef.current = attachmentIds;
       // 先登记待显示附件，用户消息一出现立刻渲染（不等 AI 完成）
       pendingAttachmentsRef.current = uploaded.length ? uploaded : null;
-      // ③ 发送消息：带上 attachmentIds，服务端据此限定检索范围并挂接归属
+      // ③ 发送消息：带上 attachmentIds 与联网开关
       await sendMessage(
         { text },
-        { body: { chatId: activeChatId, attachmentIds } },
+        {
+          body: {
+            chatId: activeChatId,
+            attachmentIds,
+            useWebSearch: webSearchEnabled,
+          },
+        },
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "发送失败，请稍后重试。");
@@ -235,7 +244,11 @@ function ChatContent({ user }: { user: ChatUser }) {
     stickToBottomRef.current = true;
     try {
       await regenerate({
-        body: { chatId, attachmentIds: lastAttachmentIdsRef.current },
+        body: {
+          chatId,
+          attachmentIds: lastAttachmentIdsRef.current,
+          useWebSearch: webSearchEnabled,
+        },
       });
     } catch (retryError) {
       setError(
@@ -475,6 +488,9 @@ function ChatContent({ user }: { user: ChatUser }) {
         </header>
 
         <button onClick={createChat}> +新建对话</button>
+        <Link className={styles.asideLink} href="/files">
+          我的文件
+        </Link>
         <div className={styles.asideContent}>
           {loadingChats ? (
             <p>加载中......</p>
@@ -721,10 +737,29 @@ function ChatContent({ user }: { user: ChatUser }) {
           </form>
 
           <div>
-            <span>Enter 发送 · Shift + Enter 换行</span>
+            <div className={styles.composerLeft}>
+              <button
+                type="button"
+                className={`${styles.webToggle} ${webSearchEnabled ? styles.webToggleOn : ""}`}
+                aria-pressed={webSearchEnabled}
+                onClick={() => setWebSearchEnabled((value) => !value)}
+                title="开启后：本地知识库没有结果时才会联网搜索"
+              >
+                <span className={styles.webDot} />
+                联网搜索{webSearchEnabled ? "已开" : "关闭"}
+              </button>
+              {webSearchEnabled && (
+                <span className={styles.webHint}>
+                  问题会发送给第三方搜索服务
+                </span>
+              )}
+            </div>
 
-            <button
-              className={styles.fileBtn}
+            <div className={styles.composerRight}>
+              <span>Enter 发送 · Shift + Enter 换行</span>
+
+              <button
+                className={styles.fileBtn}
               type="button"
               aria-label="添加附件"
               onClick={() => fileInputRef.current?.click()}
@@ -777,6 +812,7 @@ function ChatContent({ user }: { user: ChatUser }) {
                 发送
               </button>
             )}
+            </div>
           </div>
         </footer>
       </div>

@@ -1,8 +1,12 @@
+import { connection } from "next/server";
 import { auth } from "@/auth";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 
 export async function GET() {
+  // 放在 try 之外：预渲染时 connection() 抛出的中止信号不能被 catch 吞掉
+  await connection();
+
   try {
     const session = await auth();
     if (!session?.user?.id) {

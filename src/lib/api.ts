@@ -35,7 +35,19 @@ export async function patchJson<T>(url: string, data: unknown): Promise<T> {
   return handle<T>(response);
 }
 
-export async function deleteJson<T = void>(url: string): Promise<T> {
-  const response = await fetch(url, { method: "DELETE" });
+export async function deleteJson<T = void>(
+  url: string,
+  data?: unknown,
+): Promise<T> {
+  const response = await fetch(url, {
+    method: "DELETE",
+    // 批量删除需要携带 body；单个删除不传 data 时不设置 Content-Type
+    ...(data === undefined
+      ? {}
+      : {
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        }),
+  });
   return handle<T>(response);
 }

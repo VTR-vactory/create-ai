@@ -5,7 +5,7 @@ import { z } from "zod";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { indexDocument } from "@/lib/documents";
-
+import { uploadRateLimit } from "@/lib/ratelimit";
 const MAX_SIZE = 1024 * 1024;
 const MAX_TOTAL_SIZE = 4 * 1024 * 1024;
 const ALLOWED_TEXT_EXT = [".txt", ".md", ".markdown", ".csv", ".json", ".log"];
@@ -39,6 +39,18 @@ async function handlePost(request: Request) {
   const session = await auth();
   if (!session?.user?.id) {
     return fail("UNAUTHORIZED", "请先登录", 401);
+  }
+
+  // ⚠️ 关键：在调用 request.formData() 解析大文件前，先做限流检查
+  const limit = await uploadRateLimit.limit(session.user.id);
+  if (!limit.success) {
+    return Response.json(
+      {
+        error: { code: "RATE_LIMITED", message: "上传过于频繁，请稍后再试。" },
+      },
+      { status: 429 },
+    );
+    // 如果你需要返回 Retry-After 头，可以改用 NextResponse.json 并附带 headers
   }
 
   let formData: FormData;

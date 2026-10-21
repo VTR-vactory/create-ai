@@ -1,3 +1,12 @@
+﻿/**
+ * POST /api/chat
+ *
+ * 编排顺序（每一步都在下面用注释标出）：
+ *   鉴权 → 校验 → 会话归属 → 限流 → 附件归属 → 取问题
+ *   → 检索 → 组装 Prompt → 流式生成 → 流结束落库
+ *
+ * 检索规则见 docs/retrieval-contract.md；落库细节见 lib/chat/persist.ts。
+ */
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import {
   convertToModelMessages,
@@ -7,129 +16,55 @@ import {
   createUIMessageStreamResponse,
   consumeStream,
 } from "ai";
-import { z } from "zod";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { findRelevantChunks, findRelevantChunksForDocuments } from "@/lib/rag";
-import { chatRateLimit, uploadRateLimit } from "@/lib/ratelimit";
+import { apiError } from "@/lib/http";
+import { chatSchema, findLastUserMessage, messageText } from "@/lib/chat/schema";
+import { buildPrompt } from "@/lib/chat/prompt";
+import { retrieveChunks } from "@/lib/chat/retrieval";
+import { persistTurn } from "@/lib/chat/persist";
+import { createNoBasisResponse, NO_BASIS_TEXT } from "@/lib/chat/no-basis";
+import { chatRateLimit } from "@/lib/ratelimit";
 
 const AI = createOpenAICompatible({
   name: "zhipu",
   apiKey: process.env.ZHIPU_API_KEY,
   baseURL: process.env.ZHIPU_BASE_URL ?? "https://open.bigmodel.cn/api/paas/v4",
 });
-// 最小结构校验：确保是合法的 UIMessage，避免服务端在后续处理时崩溃
-function isUIMessage(value: unknown): value is UIMessage {
-  if (!value || typeof value !== "object") return false;
-  const message = value as { id?: unknown; role?: unknown; parts?: unknown };
-  const roleOk =
-    message.role === "user" ||
-    message.role === "assistant" ||
-    message.role === "system";
-  return (
-    typeof message.id === "string" &&
-    message.id.length > 0 &&
-    roleOk &&
-    Array.isArray(message.parts)
-  );
-}
-
-// 创建校验器
-const chatSchema = z.object({
-  chatId: z.string().min(1),
-  messages: z.array(z.custom<UIMessage>(isUIMessage)).min(1),
-  // 本轮随消息附带的文档 id（先经 /api/documents 上传获得）
-  attachmentIds: z.array(z.string().cuid()).max(10).default([]),
-});
-
-function messageText(message: UIMessage): string {
-  return message.parts
-    .filter(
-      (part): part is Extract<typeof part, { type: "text" }> =>
-        part.type === "text",
-    )
-    .map((part) => part.text)
-    .join("\n");
-}
 
 export async function POST(request: Request) {
+  // 1. 鉴权
   const session = await auth();
-  // 鉴权
   if (!session?.user?.id) {
-    return Response.json(
-      { error: { code: "UNAUTHORIZED", message: "请先登录" } },
-      { status: 401 },
-    );
+    return apiError("UNAUTHORIZED", "请先登录", 401);
   }
-  // ⚠️ 关键：在调用 request.formData() 解析大文件前，先做限流检查
-  const limit = await uploadRateLimit.limit(session.user.id);
-  if (!limit.success) {
-    return Response.json(
-      {
-        error: { code: "RATE_LIMITED", message: "上传过于频繁，请稍后再试。" },
-      },
-      { status: 429 },
-    );
-    // 如果你需要返回 Retry-After 头，可以改用 NextResponse.json 并附带 headers
-  }
-
   const userId = session.user.id;
+
   try {
-    // 格式校验
+    // 2. 校验请求体（request.json() 只能读一次）
     const parsed = chatSchema.safeParse(await request.json());
-    console.log(
-      "chat parsed",
-      parsed.success
-        ? {
-            chatId: parsed.data.chatId,
-            messages: parsed.data.messages.length,
-            attachmentIds: parsed.data.attachmentIds,
-          }
-        : parsed.error.issues,
-    );
     if (!parsed.success) {
-      return Response.json(
-        {
-          error: { code: "VALIDATION_ERROR", message: "聊天请求格式不正确。" },
-        },
-        { status: 400 },
-      );
+      return apiError("VALIDATION_ERROR", "聊天请求格式不正确。");
     }
 
-    // 校验当前对话是否属于当前用户
+    // 3. 会话归属
     const ownedChat = await prisma.chat.findFirst({
-      where: {
-        id: parsed.data.chatId,
-        userId: session.user.id,
-      },
+      where: { id: parsed.data.chatId, userId },
       select: { id: true },
     });
     if (!ownedChat) {
-      return Response.json(
-        { error: { code: "NOT_FOUND", message: "对话不存在。" } },
-        { status: 404 },
-      );
+      return apiError("NOT_FOUND", "对话不存在。", 404);
     }
 
-    // 限流
-
-    const limit = await chatRateLimit.limit(session.user.id);
+    // 4. 限流
+    const limit = await chatRateLimit.limit(userId);
     if (!limit.success) {
-      return Response.json(
-        {
-          error: {
-            code: "RATE_LIMITED",
-            message: "请求过于频繁，请稍后再试。",
-          },
-        },
-        {
-          status: 429,
-          headers: { "X-RateLimit-Reset": String(limit.reset) },
-        },
-      );
+      return apiError("RATE_LIMITED", "请求过于频繁，请稍后再试。", 429, {
+        "X-RateLimit-Reset": String(limit.reset),
+      });
     }
 
-    // 解析本轮附件（仍校验归属，防止越权引用他人文档）
+    // 5. 附件归属（数量必须完全匹配，防止越权引用他人文档）
     const attachmentIds = parsed.data.attachmentIds;
     let attachments: { id: string; name: string }[] = [];
     if (attachmentIds.length) {
@@ -138,91 +73,79 @@ export async function POST(request: Request) {
         select: { id: true, name: true },
       });
       if (attachments.length !== attachmentIds.length) {
-        return Response.json(
-          {
-            error: {
-              code: "INVALID_ATTACHMENT",
-              message: "附件不存在或无权访问。",
-            },
-          },
-          { status: 400 },
-        );
+        return apiError("INVALID_ATTACHMENT", "附件不存在或无权访问。");
       }
     }
 
-    // 找到当前对话的最后一个用户消息
-
-    const lastUserMessage = [...parsed.data.messages]
-      .reverse()
-      .find((m) => m.role === "user");
+    // 6. 取本轮问题；允许「有附件、无文字」
+    const lastUserMessage = findLastUserMessage(parsed.data.messages);
     const userText = lastUserMessage ? messageText(lastUserMessage).trim() : "";
-
-    // 允许「有附件、无文字」：纯附件提问是合法场景
     if (!userText && !attachments.length) {
-      return Response.json(
-        { error: { code: "EMPTY_MESSAGE", message: "请输入问题或上传附件。" } },
-        { status: 400 },
-      );
+      return apiError("EMPTY_MESSAGE", "请输入问题或上传附件。");
     }
 
     const attachmentNames = attachments.map((doc) => doc.name);
-    // 纯附件提问时，给模型一个明确指令，否则它只会看到空文本而回复寒暄
-    const effectiveQuestion =
-      userText || "请阅读并总结我刚上传的资料，说明它讲了什么。";
-    // 只保留用户真正输入的文字；纯附件时为空，历史里仅显示附件 chip
-    const userContent = userText;
-    const titleSeed = userText || attachmentNames[0] || "新对话";
-
-    // RAG 检索：有附件时只在该轮附件范围内检索，否则检索用户全部资料
     const userClientId = lastUserMessage?.id ?? null;
     const assistantClientId = userClientId
       ? `${userClientId}::assistant`
       : null;
-    const relevantChunks = attachments.length
-      ? await findRelevantChunksForDocuments(
-          userId,
-          userText,
-          attachments.map((doc) => doc.id),
-        )
-      : await findRelevantChunks(userId, userText);
-    const hasAttachments = attachments.length > 0;
-    const knowledge = relevantChunks.length
-      ? relevantChunks
-          .map(
-            (chunk, index) =>
-              `[资料 ${index + 1}：${chunk.documentName}]\n${chunk.content}`,
-          )
-          .join("\n\n")
-      : "没有找到与问题相关的私有资料。";
 
-    // 有附件时把“文件内容”放进用户消息（比只塞 system 更不容易被判成“无法访问文件”）
-    const promptForModel = hasAttachments
-      ? `${effectiveQuestion}\n\n【本轮上传文件的内容】\n${knowledge}`
-      : effectiveQuestion;
+    // 7. 检索（附件范围 / 当前用户文档；本地无命中且开关开启时才联网）
+    const { chunks, webResults } = await retrieveChunks({
+      userId,
+      userText,
+      attachmentIds: attachments.map((doc) => doc.id),
+      useWebSearch: parsed.data.useWebSearch,
+    });
 
-    // 把内容/指令写回最后一条用户消息，模型才有明确的上下文与任务
+    // 8. 组装 Prompt：资料 / 网络结果进用户消息，instructions 只放规则
+    const prompt = buildPrompt({ userText, attachmentNames, chunks, webResults });
+
+    // 8.5 没有任何依据（本地无命中，且未联网 / 联网无结果）：不调用模型。
+    // 模型有自己的通用知识，只靠 prompt 约束仍可能作答；这里必须确定性短路。
+    if (!chunks.length && !webResults.length) {
+      console.log("[chat] no-basis", {
+        attachmentCount: attachments.length,
+        webSearchEnabled: parsed.data.useWebSearch,
+      });
+      return createNoBasisResponse({
+        originalMessages: parsed.data.messages,
+        onFinish: () =>
+          persistTurn({
+            chatId: ownedChat.id,
+            userId,
+            userClientId,
+            assistantClientId,
+            userContent: prompt.userContent,
+            assistantContent: NO_BASIS_TEXT,
+            attachmentIds: attachments.map((doc) => doc.id),
+            titleSeed: prompt.titleSeed,
+          }),
+      });
+    }
+
     const modelMessages: UIMessage[] = parsed.data.messages.map((message) =>
       message.role === "user" && message.id === lastUserMessage?.id
-        ? { ...message, parts: [{ type: "text", text: promptForModel }] }
+        ? { ...message, parts: [{ type: "text", text: prompt.promptForModel }] }
         : message,
     );
 
-    const systemPrompt = hasAttachments
-      ? "你是 KnowFlow AI，一个严谨的中文知识库助手。用户消息末尾会附带其上传文件的内容，请直接依据这些内容完成请求，不要声称无法访问文件；只有在内容确实不包含所需信息时，才说明没有依据。回答简洁且可执行。"
-      : `你是 KnowFlow AI，一个严谨的中文知识库助手。优先依据资料回答；资料不足时明确说“我在当前知识库中没有找到依据”，不要编造。回答简洁且可执行。\n\n资料片段：\n${knowledge}`;
-
-    // 流式生成  调用大模型
+    // 9. 流式生成
     const result = streamText({
       model: AI("glm-4-flash"),
-      instructions: systemPrompt, // v7 推荐用 instructions 替代 system[citation:10][citation:13]
+      instructions: prompt.instructions,
       messages: await convertToModelMessages(modelMessages.slice(-12)),
+      // 绑定请求信号：用户点「停止生成」或浏览器断开时，立刻中止上游模型调用。
+      // 取舍：停止要立即生效，因此断开 = 中止，只保留已经生成的内容。
       abortSignal: request.signal,
     });
-    // 持久化        → 流结束后写入数据库
+
+    // 10. 流结束后落库（幂等 / 原子 position / 附件挂接 / 标题保护）
     const stream = toUIMessageStream({
       stream: result.stream,
       originalMessages: parsed.data.messages,
       onFinish: async ({ responseMessage, isAborted, outcome }) => {
+        // 只保留已生成的部分：正常→完整；停止/断开→已生成；一个字都没有→占位文案
         const partial = messageText(responseMessage).trim();
         const assistantContent =
           partial ||
@@ -230,113 +153,32 @@ export async function POST(request: Request) {
             ? "（已停止生成）"
             : "（生成失败，可重试）");
 
-        try {
-          await prisma.$transaction(async (tx) => {
-            const existingUser = userClientId
-              ? await tx.message.findUnique({
-                  where: {
-                    chatId_clientId: {
-                      chatId: ownedChat.id,
-                      clientId: userClientId,
-                    },
-                  },
-                  select: { id: true, position: true },
-                })
-              : null;
-
-            let userPosition: number;
-            let userMessageId: string;
-            if (existingUser) {
-              userPosition = existingUser.position;
-              userMessageId = existingUser.id;
-            } else {
-              const last = await tx.message.findFirst({
-                where: { chatId: ownedChat.id },
-                orderBy: { position: "desc" },
-                select: { position: true },
-              });
-              userPosition = (last?.position ?? -1) + 1;
-              const created = await tx.message.create({
-                data: {
-                  chatId: ownedChat.id,
-                  role: "USER",
-                  content: userContent,
-                  position: userPosition,
-                  clientId: userClientId,
-                },
-                select: { id: true },
-              });
-              userMessageId = created.id;
-            }
-
-            // 把本轮附件挂到用户消息上（同一事务，保证归属与消息一致）
-            if (attachments.length) {
-              await tx.document.updateMany({
-                where: {
-                  id: { in: attachments.map((doc) => doc.id) },
-                  userId,
-                },
-                data: { messageId: userMessageId, chatId: ownedChat.id },
-              });
-            }
-
-            const existingAssistant = assistantClientId
-              ? await tx.message.findUnique({
-                  where: {
-                    chatId_clientId: {
-                      chatId: ownedChat.id,
-                      clientId: assistantClientId,
-                    },
-                  },
-                  select: { id: true },
-                })
-              : null;
-
-            if (existingAssistant) {
-              await tx.message.update({
-                where: { id: existingAssistant.id },
-                data: { content: assistantContent },
-              });
-            } else {
-              await tx.message.create({
-                data: {
-                  chatId: ownedChat.id,
-                  role: "ASSISTANT",
-                  content: assistantContent,
-                  position: userPosition + 1,
-                  clientId: assistantClientId,
-                },
-              });
-            }
-
-            await tx.chat.update({
-              where: { id: ownedChat.id },
-              data: { title: titleSeed.slice(0, 30), updatedAt: new Date() },
-            });
-          });
-        } catch (persistError) {
-          console.error("chat persistence failed", persistError);
-        }
+        await persistTurn({
+          chatId: ownedChat.id,
+          userId,
+          userClientId,
+          assistantClientId,
+          userContent: prompt.userContent,
+          assistantContent,
+          attachmentIds: attachments.map((doc) => doc.id),
+          titleSeed: prompt.titleSeed,
+        });
       },
       onError: (error) => {
         console.error("model stream failed", error);
         return "模型暂时不可用，请稍后重试。";
       },
     });
+
     return createUIMessageStreamResponse({
       stream,
+      // consumeSseStream：给 SSE 流做一份 tee 副本并独立消费。
+      // 客户端断开时响应流被 cancel，但副本仍会把流读到结尾，
+      // 保证 onFinish 可靠触发、把「已生成的部分」落库，避免历史消息缺失。
       consumeSseStream: consumeStream,
     });
   } catch (error) {
     console.error("chat failed", error);
-    return Response.json(
-      {
-        error: {
-          code: "INTERNAL_ERROR",
-          message: "服务暂时不可用，请稍后重试。",
-        },
-      },
-      { status: 500 },
-    );
+    return apiError("INTERNAL_ERROR", "服务暂时不可用，请稍后重试。", 500);
   }
 }

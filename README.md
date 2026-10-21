@@ -1,5 +1,10 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## 项目文档
+
+- [检索契约](docs/retrieval-contract.md)：回答问题时允许使用的数据来源、检索顺序、降级规则。
+  **修改检索逻辑前必须先更新该文档。**
+
 ## Getting Started
 
 First, run the development server:

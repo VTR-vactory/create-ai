@@ -1,18 +1,28 @@
-/**
+﻿/**
  * RAG（检索增强生成）工具库
  *
  * 核心功能：
  * 1. splitText       - 把长文档切成小块（chunk）
  * 2. createEmbedding - 把文本转成向量（调智谱 embedding API）
- * 3. cosineSimilarity- 算两个向量的相似度
- * 4. findRelevantChunks - 从用户的文档里找出最相关的片段
+ * 3. findRelevantChunks - 用 pgvector 在数据库里做相似度检索
  *
  * RAG 流程：
- *   上传时：文档 → 切块 → 每块转向量 → 存数据库
- *   提问时：问题转向量 → 和每块算相似度 → 取 Top 4 → 塞进 prompt
+ *   上传时：文档 → 切块 → 每块转向量 → 存数据库（vector 列）
+ *   提问时：问题转向量 → 数据库按余弦距离排序 → 取 Top K → 塞进 prompt
  */
 
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+
+// 余弦距离阈值：distance = 1 - similarity。
+// 0.55 约等于相似度 0.45（与原实现保持一致）；过高会过滤掉正确答案，过低会引入噪声。
+const MAX_COSINE_DISTANCE = 0.55;
+
+// 1. 定义返回类型
+type RawChunkResult = {
+  content: string;
+  documentName: string;
+};
 
 // 智谱 API 地址，优先用环境变量，否则用默认值
 const baseUrl =
@@ -78,12 +88,12 @@ export function splitText(text: string, size = 800, overlap = 120): string[] {
  * 把文本转成向量（Embedding）
  *
  * 什么是 Embedding？
- * - 把文字转成一串数字（如 2048 维数组）
+ * - 把文字转成一串数字（如 1024 维数组）
  * - "意思相近"的文字，向量也相近
  * - 用于"语义搜索"——不靠字面匹配，靠意思匹配
  *
  * @param input 要转向量的文本
- * @returns     2048 维的向量数组
+ * @returns     1024 维的向量数组
  */
 export async function createEmbedding(input: string): Promise<number[]> {
   // ① 检查 API Key 是否配置
@@ -98,7 +108,7 @@ export async function createEmbedding(input: string): Promise<number[]> {
       "Content-Type": "application/json",
     },
     // 请求体：模型名 + 输入文本
-    body: JSON.stringify({ model: "embedding-3", input }),
+    body: JSON.stringify({ model: "embedding-3", input, dimensions: 1024 }),
   });
 
   // ③ 检查响应状态
@@ -120,89 +130,37 @@ export async function createEmbedding(input: string): Promise<number[]> {
 }
 
 /**
- * 计算两个向量的余弦相似度
- *
- * 公式：
- *   cos(A, B) = (A · B) / (|A| * |B|)
- *
- * 其中：
- *   A · B = 向量点积（对应位置相乘后求和）
- *   |A|   = A 的模长（sqrt(各分量平方和)）
- *
- * 返回值范围：-1 到 1
- *   - 1：完全相同方向（最相似）
- *   - 0：完全无关（垂直）
- *   - -1：完全相反方向
- *
- * 实际使用中，文本向量大多在 0 到 1 之间，
- * 越接近 1 越相似。
- *
- * @param left  向量 A
- * @param right 向量 B
- * @returns     相似度（0-1，越大越相似）
- */
-export function cosineSimilarity(left: number[], right: number[]): number {
-  // ① 检查长度是否一致（不一致无法比较）
-  if (left.length !== right.length || left.length === 0) return 0;
-
-  // ② 累加点积、模长
-  let dot = 0; // A · B
-  let leftNorm = 0; // |A|²
-  let rightNorm = 0; // |B|²
-
-  for (let index = 0; index < left.length; index += 1) {
-    dot += left[index] * right[index]; // 累加点积
-    leftNorm += left[index] ** 2; // 累加 A 的平方和
-    rightNorm += right[index] ** 2; // 累加 B 的平方和
-  }
-
-  // ③ 计算最终相似度
-  return dot / (Math.sqrt(leftNorm) * Math.sqrt(rightNorm));
-}
-
-/**
  * 找出与问题最相关的文档片段（RAG 检索核心）
  *
  * 流程：
  *   ① 把问题转向量
- *   ② 查当前用户的所有文档块
- *   ③ 逐个算相似度
- *   ④ 过滤低分、排序、取 Top 4
+ *   ② 交给数据库按余弦距离（<=>）排序
+ *   ③ 取 Top K
  *
  * @param userId   当前用户 ID（数据隔离）
- * @param question 用户的问题
- * @returns        最相关的片段数组（含内容、文档名、相似度）
+ * @param query    用户的问题
+ * @param limit    取前几条（默认 5）
+ * @returns        最相关的片段数组（含内容、文档名）
  */
-export async function findRelevantChunks(userId: string, question: string) {
-  // ① 把问题转成向量
-  const questionEmbedding = await createEmbedding(question);
+export async function findRelevantChunks(
+  userId: string,
+  query: string,
+  limit = 5,
+) {
+  // 没有问题文本就无法做语义检索（全局范围内不能瞎取）
+  if (!query.trim()) return [];
+  const queryVector = await createEmbedding(query);
+  const vectorStr = `[${queryVector.join(",")}]`;
 
-  // ② 查当前用户的所有文档块
-  //    - where: 只能查当前用户的（数据隔离）
-  //    - include: 带出文档名（用于后续展示引用来源）
-  //    - take: 最多取 200 条（防止全表扫描）
-  const chunks = await prisma.documentChunk.findMany({
-    where: { document: { userId } },
-    include: { document: { select: { name: true } } },
-    take: 200,
-  });
-
-  // ③ 算相似度 + 过滤 + 排序 + 取 Top 4
-  return (
-    chunks
-      .map((chunk) => ({
-        content: chunk.content,
-        documentName: chunk.document.name,
-        // 算"问题"和"这一块"的相似度
-        score: cosineSimilarity(questionEmbedding, chunk.embedding as number[]),
-      }))
-      // 过滤：相似度低于 0.45 的不要（避免塞无关内容）
-      .filter((chunk) => chunk.score >= 0.45)
-      // 排序：相似度高的在前
-      .sort((first, second) => second.score - first.score)
-      // 取前 4 条
-      .slice(0, 4)
-  );
+  return await prisma.$queryRaw<RawChunkResult[]>`
+    SELECT dc.content, d.name AS "documentName"
+    FROM "DocumentChunk" dc
+    JOIN "Document" d ON dc."documentId" = d.id
+    WHERE d."userId" = ${userId}
+      AND dc.embedding <=> ${vectorStr}::vector <= ${MAX_COSINE_DISTANCE}
+    ORDER BY dc.embedding <=> ${vectorStr}::vector
+    LIMIT ${limit};
+  `;
 }
 
 /**
@@ -210,42 +168,42 @@ export async function findRelevantChunks(userId: string, question: string) {
  *
  * 与全量检索的区别：
  * - 范围锁定在 documentIds（且仍校验 userId，防止越权）
- * - 问题为空时（纯附件、无文字），不做语义检索，直接取前几块
- *   让模型能"读懂附件"，而不是返回空
+ * - 纯附件提问（没有问题文本）时不做语义检索，直接取附件的前几块，
+ *   让模型能读到文件内容，而不是返回空
  */
 export async function findRelevantChunksForDocuments(
   userId: string,
-  question: string,
+  query: string,
   documentIds: string[],
+  limit = 5,
 ) {
   if (!documentIds.length) return [];
 
-  const chunks = await prisma.documentChunk.findMany({
-    where: { documentId: { in: documentIds }, document: { userId } },
-    include: { document: { select: { name: true } } },
-    take: 300,
-  });
-
-  if (!chunks.length) return [];
-
-  // 纯附件提问：没有可用的语义问题，直接给出前几块作为上下文
-  if (!question.trim()) {
-    return chunks.slice(0, 4).map((chunk) => ({
+  // 纯附件（无文字）：按创建顺序取前 limit 块，无需 embedding
+  if (!query.trim()) {
+    const chunks = await prisma.documentChunk.findMany({
+      where: { documentId: { in: documentIds }, document: { userId } },
+      select: { content: true, document: { select: { name: true } } },
+      orderBy: [{ documentId: "asc" }, { createdAt: "asc" }],
+      take: limit,
+    });
+    return chunks.map((chunk) => ({
       content: chunk.content,
       documentName: chunk.document.name,
-      score: 1,
     }));
   }
 
-  const questionEmbedding = await createEmbedding(question);
+  const queryVector = await createEmbedding(query);
+  const vectorStr = `[${queryVector.join(",")}]`;
 
-  return chunks
-    .map((chunk) => ({
-      content: chunk.content,
-      documentName: chunk.document.name,
-      score: cosineSimilarity(questionEmbedding, chunk.embedding as number[]),
-    }))
-    .filter((chunk) => chunk.score >= 0.45)
-    .sort((first, second) => second.score - first.score)
-    .slice(0, 4);
+  return await prisma.$queryRaw<RawChunkResult[]>`
+    SELECT dc.content, d.name AS "documentName"
+    FROM "DocumentChunk" dc
+    JOIN "Document" d ON dc."documentId" = d.id
+    WHERE d."userId" = ${userId}
+      AND dc."documentId" IN (${Prisma.join(documentIds)})
+      AND dc.embedding <=> ${vectorStr}::vector <= ${MAX_COSINE_DISTANCE}
+    ORDER BY dc.embedding <=> ${vectorStr}::vector
+    LIMIT ${limit};
+  `;
 }
