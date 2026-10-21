@@ -6,7 +6,9 @@ export const metadata: Metadata = {
   description: "团队知识库问答工作台",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({
+  children,
+}: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="zh-CN">
       <body>{children}</body>
