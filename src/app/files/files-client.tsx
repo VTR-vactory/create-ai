@@ -11,8 +11,10 @@ type UploadedFile = {
   id: string;
   name: string;
   mimeType: string;
+  kind?: "TEXT" | "IMAGE";
   size: number;
   status: FileStatus;
+  error?: string | null;
   chunkCount: number;
   failedChunks?: number;
   createdAt: string;
@@ -42,7 +44,7 @@ const FILTERS: { key: FileFilter; label: string }[] = [
 ];
 
 function isImage(file: UploadedFile) {
-  return file.mimeType.startsWith("image/");
+  return file.kind === "IMAGE" || file.mimeType.startsWith("image/");
 }
 
 function badgeOf(file: UploadedFile) {
@@ -241,7 +243,7 @@ export default function FilesClient({
             className={styles.hiddenInput}
             type="file"
             multiple
-            accept=".txt,.md,.markdown,.csv,.json,.log,image/*"
+                accept=".txt,.md,.markdown,.csv,.json,.log,image/png,image/jpeg,image/webp"
             onChange={(event) => {
               void handlePick(event.target.files);
               event.target.value = "";
@@ -362,7 +364,21 @@ export default function FilesClient({
                     {isImage(file) && (
                       <>
                         <span>·</span>
-                        <span>不参与检索</span>
+                        <span>
+                          {file.status === "READY"
+                            ? "OCR 文本可检索"
+                            : file.status === "PROCESSING"
+                              ? "OCR 处理中"
+                              : "图片 OCR"}
+                        </span>
+                      </>
+                    )}
+                    {file.error && (
+                      <>
+                        <span>·</span>
+                        <span className={styles.failedHint} title={file.error}>
+                          {file.error}
+                        </span>
                       </>
                     )}
                   </div>
