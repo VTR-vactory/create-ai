@@ -9,10 +9,10 @@ KnowFlow 让你把 Markdown / TXT / CSV 等资料变成可检索的知识库：�
 ## 功能
 
 - **账号**：注册 / 登录 / 退出（Auth.js v5，JWT + HttpOnly Cookie）
-- **知识库**：上传文本与图片、自动切块 + embedding、处理状态（`PROCESSING / READY / PARTIAL / FAILED`）、文件搜索 / 筛选 / 单删 / 批量删除
+- **知识库**：上传文本与图片、图片 OCR（GLM-4.6V-Flash）、自动切块 + embedding、处理状态（`PROCESSING / READY / PARTIAL / FAILED`）、文件搜索 / 筛选 / 单删 / 批量删除
 - **对话**：流式输出、停止生成、失败重试、刷新恢复历史、自动命名与手动改名、删除会话
 - **RAG**：pgvector 余弦检索；范围优先级 **附件 → 个人文档 → 联网（开关）**
-- **引用**：联网回答里的 `【1】` 渲染为可点击角标，并在回答下方列出「来源」
+- **引用**：本地文档 / 图片 OCR / 联网结果都支持 `[1]` 可点击来源；图片来源标注「OCR」
 - **安全**：服务端会话鉴权、资源所有权（所有查询带 `userId`）、Zod 校验、Upstash 限流、提示注入防护
 - **体验**：附件缩略图、空状态、错误/404/加载骨架屏、离线提示、移动端适配
 
@@ -115,7 +115,7 @@ TAVILY_API_KEY="..."            # 可选
 - 消息用 `(chatId, position)` 唯一约束 + `Chat.messageSeq` 原子分配，避免并发顺序错乱
 - `(chatId, clientId)` 唯一约束实现重试幂等
 - 删除会话时 `Document` 只解除关联（`ON DELETE SET NULL`），文件仍保留在「我的文件」
-- `Message.sources` 保存联网来源，历史里也能点击
+- `Message.sources` 保存本地与联网来源，历史里也能点击
 
 ## 检索规则
 
