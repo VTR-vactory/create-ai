@@ -3,7 +3,7 @@
  *
  * 编排顺序（每一步都在下面用注释标出）：
  *   鉴权 → 校验 → 会话归属 → 限流 → 附件归属 → 取问题
- *   → 检索 → 组装 Prompt → 流式生成 → 流结束落库
+ *   → 检索 → 组装 Prompt → 可用性判断 → 流式生成 → 流结束落库
  *
  * 检索规则见 docs/retrieval-contract.md；落库细节见 lib/chat/persist.ts。
  */
@@ -21,6 +21,7 @@ import { prisma } from "@/lib/prisma";
 import { apiError } from "@/lib/http";
 import { chatSchema, findLastUserMessage, messageText } from "@/lib/chat/schema";
 import { buildPrompt } from "@/lib/chat/prompt";
+import { judgeAnswerable, type AnswerabilityVerdict } from "@/lib/chat/judge";
 import { retrieveChunks } from "@/lib/chat/retrieval";
 import { persistTurn } from "@/lib/chat/persist";
 import { createNoBasisResponse, NO_BASIS_TEXT } from "@/lib/chat/no-basis";
@@ -111,12 +112,36 @@ export async function POST(request: Request) {
     // 8. 组装 Prompt：资料 / 网络结果进用户消息，instructions 只放规则
     const prompt = buildPrompt({ userText, attachmentNames, chunks, webResults });
 
-    // 8.5 没有任何依据（本地无命中，且未联网 / 联网无结果）：不调用模型。
+    // 8.5 判断检索片段是否足以回答（纯附件总结跳过：附件内容本身就是回答对象）
+    let judge: AnswerabilityVerdict | null = null;
+    if (chunks.length && userText) {
+      try {
+        judge = await judgeAnswerable({
+          question: prompt.effectiveQuestion,
+          chunks,
+        });
+        console.log("[chat] judge", {
+          answerable: judge.answerable,
+          latencyMs: judge.latencyMs,
+          promptTokens: judge.promptTokens,
+          completionTokens: judge.completionTokens,
+        });
+      } catch (error) {
+        // fail-open：judge 不可用时继续回答，避免把正常问题误判为无依据
+        console.error("[chat] judge failed", error);
+      }
+    }
+
+    const hasUsableBasis = chunks.length > 0 && judge?.answerable !== false;
+
+    // 8.6 没有任何可用依据（本地无命中或 judge 判否，且未联网 / 联网无结果）：不调用模型。
     // 模型有自己的通用知识，只靠 prompt 约束仍可能作答；这里必须确定性短路。
-    if (!chunks.length && !webResults.length) {
+    if (!hasUsableBasis && !webResults.length) {
       console.log("[chat] no-basis", {
         attachmentCount: attachments.length,
         webSearchEnabled: parsed.data.useWebSearch,
+        judgeAnswerable: judge?.answerable ?? null,
+        judgeMs: judge?.latencyMs ?? null,
       });
       return createNoBasisResponse({
         originalMessages: parsed.data.messages,

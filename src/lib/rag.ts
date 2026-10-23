@@ -149,7 +149,20 @@ export async function findRelevantChunks(
 ) {
   // 没有问题文本就无法做语义检索（全局范围内不能瞎取）
   if (!query.trim()) return [];
-  const queryVector = await createEmbedding(query);
+
+  let queryVector: number[];
+  try {
+    queryVector = await createEmbedding(query);
+  } catch (error) {
+    // 契约要求：embedding 失败视为「本次无命中」，不能把请求打成 500。
+    // 只记录长度与错误，不打印问题内容。
+    console.warn("[rag] embedding failed; treating as no hit", {
+      queryLength: query.length,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return [];
+  }
+
   const vectorStr = `[${queryVector.join(",")}]`;
 
   return await prisma.$queryRaw<RawChunkResult[]>`
@@ -193,7 +206,17 @@ export async function findRelevantChunksForDocuments(
     }));
   }
 
-  const queryVector = await createEmbedding(query);
+  let queryVector: number[];
+  try {
+    queryVector = await createEmbedding(query);
+  } catch (error) {
+    console.warn("[rag] embedding failed; treating as no hit", {
+      queryLength: query.length,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return [];
+  }
+
   const vectorStr = `[${queryVector.join(",")}]`;
 
   return await prisma.$queryRaw<RawChunkResult[]>`

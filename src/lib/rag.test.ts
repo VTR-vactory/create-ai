@@ -22,10 +22,22 @@ const DOC_A = "doc-a";
 // 与 rag.ts 中的 MAX_COSINE_DISTANCE 保持一致
 const MAX_DISTANCE = "0.55";
 
+vi.spyOn(console, "warn").mockImplementation(() => {});
+
 function stubFetch() {
   const fetchMock = vi.fn(async () => ({
     ok: true,
     json: async () => ({ data: [{ embedding: EMBEDDING }] }),
+  }));
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
+function stubFetchFailure() {
+  const fetchMock = vi.fn(async () => ({
+    ok: false,
+    status: 500,
+    json: async () => ({}),
   }));
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
@@ -71,6 +83,13 @@ describe("findRelevantChunks（纯文字 → 当前用户文档）", () => {
       { content: "c1", documentName: "a.md" },
     ]);
   });
+
+  it("embedding 失败视为无命中，不抛错、不查库", async () => {
+    stubFetchFailure();
+
+    await expect(findRelevantChunks(USER, "问题")).resolves.toEqual([]);
+    expect(queryRawMock).not.toHaveBeenCalled();
+  });
 });
 
 describe("findRelevantChunksForDocuments（附件范围）", () => {
@@ -113,5 +132,15 @@ describe("findRelevantChunksForDocuments（附件范围）", () => {
     expect(sql).toContain(USER);
     expect(sql).toContain(DOC_A);
     expect(sql).toContain(MAX_DISTANCE);
+  });
+
+  it("附件语义检索时 embedding 失败也视为无命中", async () => {
+    stubFetchFailure();
+
+    await expect(
+      findRelevantChunksForDocuments(USER, "问题", [DOC_A]),
+    ).resolves.toEqual([]);
+    expect(queryRawMock).not.toHaveBeenCalled();
+    expect(findManyMock).not.toHaveBeenCalled();
   });
 });

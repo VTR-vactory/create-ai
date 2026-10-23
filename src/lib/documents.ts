@@ -54,7 +54,6 @@ export async function indexDocument(input: {
         });
 
         try {
-          console.log();
           // 将 createEmbedding 与超时机制竞速
           const embedding = await Promise.race([
             createEmbedding(chunk),
