@@ -12,8 +12,8 @@ import { uploadRateLimit } from "@/lib/ratelimit";
 export const maxDuration = 60;
 
 const MAX_TEXT_SIZE = 1024 * 1024;
-const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
-const MAX_TOTAL_SIZE = 8 * 1024 * 1024;
+const MAX_IMAGE_SIZE = 3 * 1024 * 1024;
+const MAX_TOTAL_SIZE = 4 * 1024 * 1024;
 const MAX_IMAGE_FILES = 3;
 const ALLOWED_TEXT_EXT = [".txt", ".md", ".markdown", ".csv", ".json", ".log"];
 const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/jpg", "image/webp"];
@@ -95,7 +95,11 @@ async function handlePost(request: Request) {
 
   const totalSize = files.reduce((sum, file) => sum + file.size, 0);
   if (totalSize > MAX_TOTAL_SIZE) {
-    return fail("TOTAL_TOO_LARGE", "文件总大小超过 8MB", 413);
+    return fail(
+      "TOTAL_TOO_LARGE",
+      `文件总大小超过 ${MAX_TOTAL_SIZE / 1024 / 1024}MB`,
+      413,
+    );
   }
 
   const imageCount = files.filter((file) =>

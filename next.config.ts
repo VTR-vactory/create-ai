@@ -9,7 +9,7 @@ const nextConfig: NextConfig = {
     serverFunctions: true, // 开发时显示 Server Action 调用详情
     browserToTerminal: true, // 浏览器 console.log 转发到终端
   },
-  output: "standalone",
+  output: process.env.VERCEL ? undefined : "standalone",
 };
 
 export default nextConfig;
