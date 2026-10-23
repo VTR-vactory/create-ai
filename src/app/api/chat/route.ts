@@ -21,6 +21,10 @@ import { prisma } from "@/lib/prisma";
 import { apiError } from "@/lib/http";
 import { chatSchema, findLastUserMessage, messageText } from "@/lib/chat/schema";
 import { buildPrompt } from "@/lib/chat/prompt";
+import {
+  findAttachmentIssue,
+  type AttachmentRecord,
+} from "@/lib/chat/attachments";
 import { judgeAnswerable, type AnswerabilityVerdict } from "@/lib/chat/judge";
 import { retrieveChunks } from "@/lib/chat/retrieval";
 import { persistTurn } from "@/lib/chat/persist";
@@ -70,14 +74,29 @@ export async function POST(request: Request) {
 
     // 5. 附件归属（数量必须完全匹配，防止越权引用他人文档）
     const attachmentIds = parsed.data.attachmentIds;
-    let attachments: { id: string; name: string }[] = [];
+    let attachments: AttachmentRecord[] = [];
     if (attachmentIds.length) {
       attachments = await prisma.document.findMany({
         where: { id: { in: attachmentIds }, userId },
-        select: { id: true, name: true },
+        select: {
+          id: true,
+          name: true,
+          status: true,
+          kind: true,
+          ocrText: true,
+        },
       });
       if (attachments.length !== attachmentIds.length) {
         return apiError("INVALID_ATTACHMENT", "附件不存在或无权访问。");
+      }
+
+      const attachmentIssue = findAttachmentIssue(attachments);
+      if (attachmentIssue) {
+        return apiError(
+          attachmentIssue.code,
+          attachmentIssue.message,
+          attachmentIssue.status,
+        );
       }
     }
 
