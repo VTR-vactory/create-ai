@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState, useEffect } from "react";
-import { getJson, postForm, deleteJson } from "@/lib/api";
+import { getJson, postForm, postJson, deleteJson } from "@/lib/api";
 import Link from "next/link";
 import styles from "./page.module.scss";
 
@@ -18,6 +18,7 @@ type UploadedFile = {
   chunkCount: number;
   failedChunks?: number;
   createdAt: string;
+  updatedAt?: string;
   preview?: string;
 };
 
@@ -74,6 +75,14 @@ function formatDate(iso: string) {
   return iso.slice(0, 10);
 }
 
+const REINDEX_STALE_MS = 10 * 60 * 1000;
+
+function canRetry(file: UploadedFile) {
+  if (file.status === "FAILED" || file.status === "PARTIAL") return true;
+  if (file.status !== "PROCESSING" || !file.updatedAt) return false;
+  return Date.now() - new Date(file.updatedAt).getTime() >= REINDEX_STALE_MS;
+}
+
 export default function FilesClient({
   user,
 }: {
@@ -84,6 +93,7 @@ export default function FilesClient({
   const [filter, setFilter] = useState<FileFilter>("all");
   const [errorMessage, setErrorMessage] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [reindexingId, setReindexingId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const visibleFiles = useMemo(() => {
@@ -144,6 +154,22 @@ export default function FilesClient({
       setErrorMessage(
         error instanceof Error ? error.message : "删除失败，请稍后重试。",
       );
+    }
+  }
+
+  async function handleRetry(file: UploadedFile) {
+    setErrorMessage("");
+    setReindexingId(file.id);
+
+    try {
+      await postJson(`/api/documents/${file.id}/reindex`, {});
+      await loadFiles();
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "重建索引失败，请稍后重试。",
+      );
+    } finally {
+      setReindexingId(null);
     }
   }
 
@@ -384,13 +410,25 @@ export default function FilesClient({
                   </div>
                 </div>
 
-                <button
-                  className={styles.dangerButton}
-                  onClick={() => handleDelete(file)}
-                  type="button"
-                >
-                  删除
-                </button>
+                <div className={styles.cardActions}>
+                  {canRetry(file) && (
+                    <button
+                      className={styles.retryButton}
+                      onClick={() => handleRetry(file)}
+                      type="button"
+                      disabled={reindexingId === file.id}
+                    >
+                      {reindexingId === file.id ? "重建中…" : "重试"}
+                    </button>
+                  )}
+                  <button
+                    className={styles.dangerButton}
+                    onClick={() => handleDelete(file)}
+                    type="button"
+                  >
+                    删除
+                  </button>
+                </div>
               </li>
             ))}
           </ul>

@@ -9,7 +9,7 @@ KnowFlow 让你把 Markdown / TXT / CSV 等资料变成可检索的知识库：�
 ## 功能
 
 - **账号**：注册 / 登录 / 退出（Auth.js v5，JWT + HttpOnly Cookie）
-- **知识库**：上传文本与图片、图片 OCR（GLM-4.6V-Flash）、自动切块 + embedding、处理状态（`PROCESSING / READY / PARTIAL / FAILED`）、文件搜索 / 筛选 / 单删 / 批量删除
+- **知识库**：上传文本与图片、图片 OCR（GLM-4.6V-Flash）、自动切块 + embedding、处理状态（`PROCESSING / READY / PARTIAL / FAILED`）、失败重试、文件搜索 / 筛选 / 单删 / 批量删除
 - **对话**：流式输出、停止生成、失败重试、刷新恢复历史、自动命名与手动改名、删除会话
 - **RAG**：pgvector 余弦检索；范围优先级 **附件 → 个人文档 → 联网（开关）**
 - **引用**：本地文档 / 图片 OCR / 联网结果都支持 `[1]` 可点击来源；图片来源标注「OCR」
