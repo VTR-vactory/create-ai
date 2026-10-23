@@ -58,6 +58,9 @@ model Document {
   content     String
   mimeType    String?
   size        Int?
+  kind        DocumentKind    @default(TEXT)
+  ocrText     String?
+  ocrProvider String?
   contentHash String?
   status      DocumentStatus  @default(PROCESSING)
   failedChunks  Int           @default(0)
@@ -101,4 +104,9 @@ enum DocumentStatus {
   READY
   FAILED
   PARTIAL
+}
+
+enum DocumentKind {
+  TEXT
+  IMAGE
 }

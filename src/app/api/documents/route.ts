@@ -5,14 +5,18 @@ import { z } from "zod";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { indexDocument } from "@/lib/documents";
+import { extractImageText, OcrError } from "@/lib/ocr";
 import { uploadRateLimit } from "@/lib/ratelimit";
 
 // 上传后要逐块做 embedding，可能较久（Hobby 上限 60s）
 export const maxDuration = 60;
 
-const MAX_SIZE = 1024 * 1024;
-const MAX_TOTAL_SIZE = 4 * 1024 * 1024;
+const MAX_TEXT_SIZE = 1024 * 1024;
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
+const MAX_TOTAL_SIZE = 8 * 1024 * 1024;
+const MAX_IMAGE_FILES = 3;
 const ALLOWED_TEXT_EXT = [".txt", ".md", ".markdown", ".csv", ".json", ".log"];
+const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/jpg", "image/webp"];
 const MIN_TEXT_LENGTH = 30;
 
 const chatIdSchema = z.string().cuid();
@@ -91,7 +95,17 @@ async function handlePost(request: Request) {
 
   const totalSize = files.reduce((sum, file) => sum + file.size, 0);
   if (totalSize > MAX_TOTAL_SIZE) {
-    return fail("TOTAL_TOO_LARGE", "文件总大小超过 4MB", 413);
+    return fail("TOTAL_TOO_LARGE", "文件总大小超过 8MB", 413);
+  }
+
+  const imageCount = files.filter((file) =>
+    file.type.startsWith("image/"),
+  ).length;
+  if (imageCount > MAX_IMAGE_FILES) {
+    return fail(
+      "TOO_MANY_IMAGES",
+      `一次最多上传 ${MAX_IMAGE_FILES} 张图片`,
+    );
   }
 
   const documents: DocumentResult[] = [];
@@ -99,7 +113,15 @@ async function handlePost(request: Request) {
   for (const file of files) {
     const isImage = file.type.startsWith("image/");
 
-    if (!isImage) {
+    if (isImage) {
+      if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+        return fail(
+          "UNSUPPORTED_TYPE",
+          `图片仅支持 PNG/JPEG/WebP：${file.name}`,
+          415,
+        );
+      }
+    } else {
       const okExt = ALLOWED_TEXT_EXT.some((ext) =>
         file.name.toLowerCase().endsWith(ext),
       );
@@ -108,8 +130,13 @@ async function handlePost(request: Request) {
       }
     }
 
-    if (file.size > MAX_SIZE) {
-      return fail("FILE_TOO_LARGE", `文件太大（最大 1MB）：${file.name}`, 413);
+    const maxSize = isImage ? MAX_IMAGE_SIZE : MAX_TEXT_SIZE;
+    if (file.size > maxSize) {
+      return fail(
+        "FILE_TOO_LARGE",
+        `文件太大（最大 ${Math.round(maxSize / 1024 / 1024)}MB）：${file.name}`,
+        413,
+      );
     }
 
     let content: string;
@@ -122,10 +149,10 @@ async function handlePost(request: Request) {
       }
     }
 
-    // 内容哈希：同一用户上传相同内容的文件时复用，避免重复切块/向量化
-    const contentHash = isImage
-      ? null
-      : createHash("sha256").update(content).digest("hex");
+    // 内容哈希：同一用户上传相同内容时复用，避免重复 OCR/切块/向量化
+    const contentHash = createHash("sha256").update(content).digest("hex");
+
+    let document: { id: string; name: string; status: string } | null = null;
 
     if (contentHash) {
       const existing = await prisma.document.findFirst({
@@ -137,50 +164,17 @@ async function handlePost(request: Request) {
           _count: { select: { chunks: true } },
         },
       });
-      if (existing) {
-        documents.push({
-          id: existing.id,
-          name: existing.name,
-          status: existing.status,
-          chunkCount: existing._count.chunks,
-          deduped: true,
-        });
-        continue;
-      }
-    }
 
-    let document: { id: string; name: string; status: string };
-    try {
-      document = await prisma.document.create({
-        data: {
-          name: file.name,
-          content,
-          mimeType: file.type || "application/octet-stream",
-          size: file.size,
-          contentHash,
-          status: isImage ? "READY" : "PROCESSING",
-          userId: session.user.id,
-          chatId,
-        },
-        select: { id: true, name: true, status: true },
-      });
-    } catch (err) {
-      // 并发下同一哈希可能同时创建，命中唯一约束时回退到已存在记录
-      const code =
-        err && typeof err === "object" && "code" in err
-          ? (err as { code?: string }).code
-          : undefined;
-      if (code === "P2002" && contentHash) {
-        const existing = await prisma.document.findFirst({
-          where: { userId: session.user.id, contentHash },
-          select: {
-            id: true,
-            name: true,
-            status: true,
-            _count: { select: { chunks: true } },
-          },
-        });
-        if (existing) {
+      if (existing) {
+        // 只重建「0 chunk 且 READY/FAILED」的图片：
+        // - READY + 0 chunk：Step 3 之前的旧图片，没有 OCR
+        // - FAILED + 0 chunk：上次 OCR/索引失败
+        const needsImageReprocess =
+          isImage &&
+          existing._count.chunks === 0 &&
+          (existing.status === "FAILED" || existing.status === "READY");
+
+        if (!needsImageReprocess) {
           documents.push({
             id: existing.id,
             name: existing.name,
@@ -190,19 +184,159 @@ async function handlePost(request: Request) {
           });
           continue;
         }
+
+        // 原子抢占：两个并发上传只有一个能把 FAILED/READY 改成 PROCESSING
+        const claimed = await prisma.document.updateMany({
+          where: {
+            id: existing.id,
+            status: { in: ["FAILED", "READY"] },
+            chunks: { none: {} },
+          },
+          data: {
+            kind: "IMAGE",
+            status: "PROCESSING",
+            error: null,
+            failedChunks: 0,
+            ocrText: null,
+            ocrProvider: null,
+          },
+        });
+
+        if (claimed.count === 0) {
+          const current = await prisma.document.findUnique({
+            where: { id: existing.id },
+            select: {
+              id: true,
+              name: true,
+              status: true,
+              _count: { select: { chunks: true } },
+            },
+          });
+
+          if (current) {
+            documents.push({
+              id: current.id,
+              name: current.name,
+              status: current.status,
+              chunkCount: current._count.chunks,
+              deduped: true,
+            });
+            continue;
+          }
+        } else {
+          document = {
+            id: existing.id,
+            name: existing.name,
+            status: "PROCESSING",
+          };
+        }
       }
-      throw err;
     }
 
-    // 图片不做 embedding：base64 没有语义
+    if (!document) {
+      try {
+        document = await prisma.document.create({
+          data: {
+            name: file.name,
+            content,
+            mimeType: file.type || "application/octet-stream",
+            size: file.size,
+            kind: isImage ? "IMAGE" : "TEXT",
+            contentHash,
+            status: "PROCESSING",
+            userId: session.user.id,
+            chatId,
+          },
+          select: { id: true, name: true, status: true },
+        });
+      } catch (err) {
+        // 并发下同一哈希可能同时创建，命中唯一约束时回退到已存在记录
+        const code =
+          err && typeof err === "object" && "code" in err
+            ? (err as { code?: string }).code
+            : undefined;
+        if (code === "P2002" && contentHash) {
+          const existing = await prisma.document.findFirst({
+            where: { userId: session.user.id, contentHash },
+            select: {
+              id: true,
+              name: true,
+              status: true,
+              _count: { select: { chunks: true } },
+            },
+          });
+          if (existing) {
+            documents.push({
+              id: existing.id,
+              name: existing.name,
+              status: existing.status,
+              chunkCount: existing._count.chunks,
+              deduped: true,
+            });
+            continue;
+          }
+        }
+        throw err;
+      }
+    }
+
+    // 图片：先把图片文字识别成文本，再用文本走切块 / embedding
     if (isImage) {
-      documents.push({
-        id: document.id,
-        name: document.name,
-        status: document.status,
-        chunkCount: 0,
-        deduped: false,
-      });
+      try {
+        const ocr = await extractImageText(content, {
+          // 上传接口是同步的，给 OCR + embedding 留出时间（maxDuration=60s）
+          timeoutMs: 12_000,
+          retryDelayMs: 1_500,
+        });
+
+        await prisma.document.update({
+          where: { id: document.id },
+          data: {
+            ocrText: ocr.text,
+            ocrProvider: ocr.provider,
+          },
+        });
+
+        const indexed = await indexDocument({
+          documentId: document.id,
+          name: document.name,
+          content: ocr.text,
+        });
+
+        documents.push({
+          id: document.id,
+          name: document.name,
+          status: indexed.status,
+          chunkCount: indexed.chunkCount,
+          deduped: false,
+        });
+      } catch (error) {
+        const message =
+          error instanceof OcrError ? error.message : "图片文字识别或索引失败";
+
+        console.error("[documents] image OCR failed", {
+          documentId: document.id,
+          code: error instanceof OcrError ? error.code : "UNKNOWN",
+        });
+
+        await prisma.document.update({
+          where: { id: document.id },
+          data: {
+            status: "FAILED",
+            error: message,
+            failedChunks: 0,
+          },
+        });
+
+        documents.push({
+          id: document.id,
+          name: document.name,
+          status: "FAILED",
+          chunkCount: 0,
+          deduped: false,
+        });
+      }
+
       continue;
     }
 
