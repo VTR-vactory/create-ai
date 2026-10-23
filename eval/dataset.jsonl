@@ -1,0 +1,10 @@
+{"id":"q001","question":"Lumen Desk 支持哪些文本文件格式？","scope":"user","shouldAnswer":true,"expectedDocNames":["01-product-zh.md"],"expectedKeywords":["Markdown","TXT","CSV"]}
+{"id":"q002","question":"提问时系统的检索顺序是什么？","scope":"user","shouldAnswer":true,"expectedDocNames":["01-product-zh.md"],"expectedKeywords":["附件","工作区","联网"]}
+{"id":"q003","question":"本地和联网都没有结果时，系统会怎么处理？","scope":"user","shouldAnswer":true,"expectedDocNames":["01-product-zh.md"],"expectedKeywords":["没有找到依据","不会调用大模型"]}
+{"id":"q004","question":"合同没有单独约定时，默认退款周期是多少？","scope":"user","shouldAnswer":true,"expectedDocNames":["01-product-zh.md"],"expectedKeywords":["14 个工作日"]}
+{"id":"q005","question":"调用 API 时使用什么认证方式？","scope":"user","shouldAnswer":true,"expectedDocNames":["02-api-en.md"],"expectedKeywords":["Authorization","Bearer"]}
+{"id":"q006","question":"Lumen Desk 是否通过了 SOC 2 Type II 认证？","scope":"user","shouldAnswer":false,"expectedDocNames":[]}
+{"id":"q007","question":"Lumen Desk 的创始人是谁？","scope":"user","shouldAnswer":false,"expectedDocNames":[]}
+{"id":"q008","question":"Lumen Desk 2025 年的营收是多少？","scope":"user","shouldAnswer":false,"expectedDocNames":[]}
+{"id":"q009","question":"Enterprise 套餐的支持响应 SLA 是多少小时？","scope":"attachment","attachmentNames":["03-limits.csv"],"shouldAnswer":true,"expectedDocNames":["03-limits.csv"],"expectedKeywords":["support_sla_hours","4"]}
+{"id":"q010","question":"Enterprise 套餐的 API 每分钟请求上限是多少？","scope":"attachment","attachmentNames":["03-limits.csv"],"shouldAnswer":true,"expectedDocNames":["03-limits.csv"],"expectedKeywords":["api_rate_per_min","120"]}

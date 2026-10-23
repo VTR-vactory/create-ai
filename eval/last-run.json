@@ -1,0 +1,245 @@
+{
+  "generatedAt": "2026-10-22T10:11:44.735Z",
+  "datasetId": "72148256f078",
+  "config": {
+    "chunkSize": 800,
+    "chunkOverlap": 120,
+    "topK": 5,
+    "maxDistance": 0.55,
+    "judgeModel": "glm-4-flash"
+  },
+  "metrics": {
+    "total": 10,
+    "retrievalRecall": 1,
+    "mrr": 0.9047619047619048,
+    "keywordHitRate": 1,
+    "refusalAccuracy": 1,
+    "falseRefusalRate": 0,
+    "judgeAccuracy": 1,
+    "isolationRate": 1,
+    "judgeCallRate": 1,
+    "retrievalP50Ms": 3,
+    "retrievalP95Ms": 8,
+    "judgeP50Ms": 3295,
+    "judgeP95Ms": 5211,
+    "promptTokens": 9318,
+    "completionTokens": 382
+  },
+  "gates": [
+    {
+      "name": "Recall@5",
+      "value": 1,
+      "display": "100.0%",
+      "target": ">= 80%",
+      "pass": true
+    },
+    {
+      "name": "MRR",
+      "value": 0.9047619047619048,
+      "display": "0.905",
+      "target": ">= 0.6",
+      "pass": true
+    },
+    {
+      "name": "拒答准确率",
+      "value": 1,
+      "display": "100.0%",
+      "target": ">= 90%",
+      "pass": true
+    },
+    {
+      "name": "误拒率",
+      "value": 0,
+      "display": "0.0%",
+      "target": "<= 10%",
+      "pass": true
+    },
+    {
+      "name": "附件隔离",
+      "value": 1,
+      "display": "100.0%",
+      "target": "100%",
+      "pass": true
+    }
+  ],
+  "rows": [
+    {
+      "id": "q001",
+      "scope": "user",
+      "shouldAnswer": true,
+      "hitDocs": [
+        "01-product-zh.md",
+        "02-api-en.md",
+        "03-limits.csv"
+      ],
+      "hitCount": 5,
+      "rank": 0,
+      "keywordHit": true,
+      "judgeAnswerable": true,
+      "judgeReason": "支持的文本格式：Markdown、TXT、CSV。",
+      "judgeError": null,
+      "effectiveAnswerable": true,
+      "isolationOk": true,
+      "pass": true
+    },
+    {
+      "id": "q002",
+      "scope": "user",
+      "shouldAnswer": true,
+      "hitDocs": [
+        "01-product-zh.md",
+        "02-api-en.md"
+      ],
+      "hitCount": 5,
+      "rank": 0,
+      "keywordHit": true,
+      "judgeAnswerable": true,
+      "judgeReason": "提问时按固定顺序取数：1. 本轮附件（如果用户上传了文件，只在附件范围内检索）。2. 当前工作区的文档。3. 联网搜索（仅当用户显式打开开关时才调用）。",
+      "judgeError": null,
+      "effectiveAnswerable": true,
+      "isolationOk": true,
+      "pass": true
+    },
+    {
+      "id": "q003",
+      "scope": "user",
+      "shouldAnswer": true,
+      "hitDocs": [
+        "01-product-zh.md"
+      ],
+      "hitCount": 3,
+      "rank": 0,
+      "keywordHit": true,
+      "judgeAnswerable": true,
+      "judgeReason": "资料片段中明确说明了如果本地检索和联网都没有结果，系统会直接返回固定文案。",
+      "judgeError": null,
+      "effectiveAnswerable": true,
+      "isolationOk": true,
+      "pass": true
+    },
+    {
+      "id": "q004",
+      "scope": "user",
+      "shouldAnswer": true,
+      "hitDocs": [
+        "01-product-zh.md",
+        "02-api-en.md"
+      ],
+      "hitCount": 3,
+      "rank": 0,
+      "keywordHit": true,
+      "judgeAnswerable": true,
+      "judgeReason": "退款说明：如果合同没有单独约定，默认按 14 个工作日处理；套餐表中有明确约定的，以套餐表为准。",
+      "judgeError": null,
+      "effectiveAnswerable": true,
+      "isolationOk": true,
+      "pass": true
+    },
+    {
+      "id": "q005",
+      "scope": "user",
+      "shouldAnswer": true,
+      "hitDocs": [
+        "01-product-zh.md",
+        "02-api-en.md"
+      ],
+      "hitCount": 5,
+      "rank": 2,
+      "keywordHit": true,
+      "judgeAnswerable": true,
+      "judgeReason": "片段 3 中明确提到 'Every request must include an API key in the Authorization header'，说明使用 API Key 进行认证。",
+      "judgeError": null,
+      "effectiveAnswerable": true,
+      "isolationOk": true,
+      "pass": true
+    },
+    {
+      "id": "q006",
+      "scope": "user",
+      "shouldAnswer": false,
+      "hitDocs": [
+        "01-product-zh.md",
+        "02-api-en.md",
+        "03-limits.csv"
+      ],
+      "hitCount": 5,
+      "rank": -1,
+      "keywordHit": true,
+      "judgeAnswerable": false,
+      "judgeReason": "资料片段中没有提及 Lumen Desk 是否通过了 SOC 2 Type II 认证。",
+      "judgeError": null,
+      "effectiveAnswerable": false,
+      "isolationOk": true,
+      "pass": true
+    },
+    {
+      "id": "q007",
+      "scope": "user",
+      "shouldAnswer": false,
+      "hitDocs": [
+        "01-product-zh.md"
+      ],
+      "hitCount": 1,
+      "rank": -1,
+      "keywordHit": true,
+      "judgeAnswerable": false,
+      "judgeReason": "资料片段中没有提及 Lumen Desk 的创始人是谁。",
+      "judgeError": null,
+      "effectiveAnswerable": false,
+      "isolationOk": true,
+      "pass": true
+    },
+    {
+      "id": "q008",
+      "scope": "user",
+      "shouldAnswer": false,
+      "hitDocs": [
+        "01-product-zh.md",
+        "02-api-en.md"
+      ],
+      "hitCount": 2,
+      "rank": -1,
+      "keywordHit": true,
+      "judgeAnswerable": false,
+      "judgeReason": "资料片段中没有提供 Lumen Desk 2025 年的营收数据。",
+      "judgeError": null,
+      "effectiveAnswerable": false,
+      "isolationOk": true,
+      "pass": true
+    },
+    {
+      "id": "q009",
+      "scope": "attachment",
+      "shouldAnswer": true,
+      "hitDocs": [
+        "03-limits.csv"
+      ],
+      "hitCount": 1,
+      "rank": 0,
+      "keywordHit": true,
+      "judgeAnswerable": true,
+      "judgeReason": "资料片段中明确给出了Enterprise套餐的支持响应SLA是4小时。",
+      "judgeError": null,
+      "effectiveAnswerable": true,
+      "isolationOk": true,
+      "pass": true
+    },
+    {
+      "id": "q010",
+      "scope": "attachment",
+      "shouldAnswer": true,
+      "hitDocs": [
+        "03-limits.csv"
+      ],
+      "hitCount": 1,
+      "rank": 0,
+      "keywordHit": true,
+      "judgeAnswerable": true,
+      "judgeReason": "资料片段中明确给出了Enterprise套餐的API每分钟请求上限是120。",
+      "judgeError": null,
+      "effectiveAnswerable": true,
+      "isolationOk": true,
+      "pass": true
+    }
+  ]
+}

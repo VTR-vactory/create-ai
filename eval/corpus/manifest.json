@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "chunkSize": 800,
+  "chunkOverlap": 120,
+  "embeddingDimensions": 1024,
+  "files": [
+    {
+      "name": "01-product-zh.md",
+      "sha256": "700b854289c483ee8399a9afcba72e4ffbd89e1628804ee2df9e0a9e9a5c7761",
+      "chars": 1683
+    },
+    {
+      "name": "02-api-en.md",
+      "sha256": "911c7442ec93191985b2eaa76ac35fd0069fbc241355bdb68300c41237337994",
+      "chars": 4891
+    },
+    {
+      "name": "03-limits.csv",
+      "sha256": "6b3a459c134b1114de428456adb7b40b7a2482ea1f9b863ecde3e02a48b4da6f",
+      "chars": 328
+    }
+  ]
+}

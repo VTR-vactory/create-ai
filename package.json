@@ -9,7 +9,10 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test": "vitest",
-    "test:run": "vitest run"
+    "test:run": "vitest run",
+    "seed:eval": "node scripts/seed-eval.mjs",
+    "check:eval": "node scripts/check-eval.mjs",
+    "eval": "node --experimental-strip-types --no-warnings scripts/eval.mjs"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^3.0.68",
@@ -19,7 +22,7 @@
     "@upstash/redis": "^1.39.0",
     "ai": "^7.0.140",
     "bcryptjs": "^3.0.3",
-    "next": "16.4.0",
+    "next": "16.4.2",
     "next-auth": "^5.0.0-beta.32",
     "p-limit": "^7.3.3",
     "react": "19.3.0",
@@ -33,7 +36,7 @@
     "@vitest/coverage-v8": "^4.1.12",
     "babel-plugin-react-compiler": "1.0.0",
     "eslint": "^9",
-    "eslint-config-next": "16.4.0",
+    "eslint-config-next": "16.4.2",
     "prisma": "^6.19.3",
     "sass": "^1.105.1",
     "typescript": "^5",

@@ -1,0 +1,13 @@
+limit,starter,growth,enterprise
+seats,3,10,50
+monthly_answers,1000,10000,100000
+storage_gb,2,20,200
+retention_days,30,90,365
+refund_business_days,14,7,30
+web_search,false,true,true
+sso_saml,false,false,true
+audit_log,false,true,true
+api_rate_per_min,30,60,120
+max_attachments,1,3,5
+max_file_mb,5,10,50
+support_sla_hours,48,24,4
