@@ -7,7 +7,7 @@
 
 - 代码仓库：`https://github.com/VTR-vactory/create-ai`（public，分支 `main`）
 - CI：`.github/workflows/ci.yml`（install → prisma generate → lint → typecheck → test → build）
-- 数据库：Neon（8 个迁移已应用，`vector` 扩展已启用）
+- 数据库：Neon（10 个迁移已应用，`vector` 扩展已启用，含图片 OCR 字段）
 - 本地：`npm run dev`
 
 ## 1. Vercel 环境变量
@@ -22,6 +22,7 @@
 | `AUTH_TRUST_HOST` | `true` |
 | `ZHIPU_API_KEY` | 智谱 API Key |
 | `ZHIPU_BASE_URL` | `https://open.bigmodel.cn/api/paas/v4` |
+| `ZHIPU_OCR_MODEL` | `glm-4.6v-flash`（图片 OCR，免费但有限流） |
 | `UPSTASH_REDIS_REST_URL` | Upstash Redis REST URL |
 | `UPSTASH_REDIS_REST_TOKEN` | Upstash Redis REST Token |
 | `TAVILY_API_KEY` | Tavily 搜索 Key |
@@ -34,9 +35,15 @@
 2. **Add New → Project → Import Git Repository**，选择 `VTR-vactory/create-ai`。
 3. Framework Preset：**Next.js**（自动识别），Root Directory：`./`。
 4. Build Command / Output：保持默认（`npm run build` 已包含 `prisma generate`）。
-5. 添加上面 9 个环境变量。
+5. 添加上面 10 个环境变量。
 6. **Deploy**。
 7. 记录线上地址 `https://<app>.vercel.app`。
+
+> Vercel Function 请求体上限为 **4.5MB**。当前上传限制为：图片 3MB、文本 1MB、单次总大小 4MB。
+> 超过限制会在进入代码前直接 413；不要为了大文件把限制改回 5MB/8MB。
+
+> `next.config.ts` 已按环境条件化：Vercel 不生成 standalone，Docker/Railway 仍保留。
+> Prisma 已包含 `rhel-openssl-3.0.x`，用于 Vercel 的 Amazon Linux 运行时。
 
 ## 3. 数据库迁移（首次已做过，后续变更时用）
 
@@ -66,6 +73,9 @@ git push
 ```
 
 > 迁移只走 Direct 连接，不要在 pooled（`-pooler`）连接上跑迁移。
+>
+> `.env` 默认指向本地库；跑 Neon 迁移时用终端临时 `export`/`$env:` 覆盖即可，
+> Prisma 不会覆盖已经存在的环境变量。Vercel 的环境变量在控制台单独配置。
 
 ## 4. 线上验收
 
@@ -81,11 +91,14 @@ curl.exe -i  https://<app>/files          # 期望 307 -> /login
 
 1. 注册 → 登录
 2. 上传一个 `.md`，列表显示「处理中 → 已就绪」
-3. 只传附件提问 → 能总结资料
-4. 库里没有的问题：联网关 → 明确「没有依据」；联网开 → 返回来源
-5. 刷新页面 → 历史消息与文件仍在
-6. 删除会话 → 「我的文件」里的文件仍在
-7. 连续发送 11 次 → 至少一次 429
+3. 上传一张包含文字的图片（≤3MB），状态变为「已就绪」，文件卡片显示「OCR 文本可检索」
+4. 只传附件提问 → 能总结资料；图片回答的来源标题显示「图片：xxx（OCR）」
+5. 点击回答里的 `[1]` → 文本文档打开原文，图片打开原图；刷新历史后仍可点击
+6. 库里没有的问题：联网关 → 明确「没有依据」；联网开 → 返回来源
+7. 刷新页面 → 历史消息与文件仍在
+8. 删除会话 → 「我的文件」里的文件仍在
+9. 连续发送 11 次 → 至少一次 429
+10. 上传超过 3MB 的图片 → 明确返回 413，而不是 500
 
 ## 5. 日常更新
 
@@ -105,6 +118,10 @@ Vercel 每次 push 到 `main` 都会生成新部署；CI 失败不会阻止 Verc
 | 流式回答被截断 | 已设置 `maxDuration = 60`；仍超时需缩短上下文 |
 | 上传/回答 429 | Upstash 额度或限流窗口；确认 URL/Token 属于同一个 Redis |
 | 联网无结果 | `TAVILY_API_KEY` 是否配置；额度是否用完；日志 `degraded=true` |
+| 上传返回 413 | 请求体超过 Vercel 4.5MB 限制；检查图片是否 ≤3MB、总大小 ≤4MB |
+| 报 `kind` / `ocrText` 列不存在 | Neon 未执行最新迁移；用 Direct 连接跑 `npx prisma migrate deploy` |
+| Prisma 引擎加载失败 | 检查 `binaryTargets` 是否包含 `rhel-openssl-3.0.x`（Vercel） |
+| 图片 OCR 一直失败 | 看 `[ocr]` 日志；免费模型 429 会自动重试，仍失败则文件标记 FAILED；稍后重新上传 |
 | 冷启动慢 | Neon 免费实例会休眠，属正常 |
 
 ## 7. 回滚
@@ -121,7 +138,8 @@ Vercel 每次 push 到 `main` 都会生成新部署；CI 失败不会阻止 Verc
 
 ## 9. 简历素材（部署后）
 
-> 已部署至 Vercel（Neon PostgreSQL + pgvector、Upstash Redis），线上 Demo：`https://<app>.vercel.app`；
-> 通过 GitHub Actions 执行 lint / typecheck / 34 个单测 / build 的持续集成。
+> 已部署至 Vercel（Neon PostgreSQL + pgvector、Upstash Redis、GLM-4.6V-Flash OCR），线上 Demo：`https://<app>.vercel.app`；
+> 通过 GitHub Actions 执行 lint / typecheck / 64 个单测 / build 的持续集成。
+> 支持图片 OCR 入库、无依据拒答，以及文本/图片/联网来源的可点击引用。
 
 （拿到线上地址后替换 `<app>`。）

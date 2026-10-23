@@ -138,6 +138,7 @@ git push
 | `AUTH_SECRET` | 新的随机值 |
 | `AUTH_TRUST_HOST` | `true` |
 | `ZHIPU_API_KEY` / `ZHIPU_BASE_URL` | 智谱 |
+| `ZHIPU_OCR_MODEL` | 图片 OCR，默认 `glm-4.6v-flash` |
 | `UPSTASH_REDIS_REST_URL/TOKEN` | 限流 |
 | `TAVILY_API_KEY` | 联网 |
 
