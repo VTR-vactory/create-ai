@@ -21,7 +21,9 @@ const MAX_COSINE_DISTANCE = 0.55;
 // 1. 定义返回类型
 type RawChunkResult = {
   content: string;
+  documentId: string;
   documentName: string;
+  kind: "TEXT" | "IMAGE";
 };
 
 // 智谱 API 地址，优先用环境变量，否则用默认值
@@ -166,7 +168,10 @@ export async function findRelevantChunks(
   const vectorStr = `[${queryVector.join(",")}]`;
 
   return await prisma.$queryRaw<RawChunkResult[]>`
-    SELECT dc.content, d.name AS "documentName"
+    SELECT dc.content,
+           d.id AS "documentId",
+           d.name AS "documentName",
+           d.kind
     FROM "DocumentChunk" dc
     JOIN "Document" d ON dc."documentId" = d.id
     WHERE d."userId" = ${userId}
@@ -196,13 +201,18 @@ export async function findRelevantChunksForDocuments(
   if (!query.trim()) {
     const chunks = await prisma.documentChunk.findMany({
       where: { documentId: { in: documentIds }, document: { userId } },
-      select: { content: true, document: { select: { name: true } } },
+      select: {
+        content: true,
+        document: { select: { id: true, name: true, kind: true } },
+      },
       orderBy: [{ documentId: "asc" }, { createdAt: "asc" }],
       take: limit,
     });
     return chunks.map((chunk) => ({
       content: chunk.content,
+      documentId: chunk.document.id,
       documentName: chunk.document.name,
+      kind: chunk.document.kind,
     }));
   }
 
@@ -220,7 +230,10 @@ export async function findRelevantChunksForDocuments(
   const vectorStr = `[${queryVector.join(",")}]`;
 
   return await prisma.$queryRaw<RawChunkResult[]>`
-    SELECT dc.content, d.name AS "documentName"
+    SELECT dc.content,
+           d.id AS "documentId",
+           d.name AS "documentName",
+           d.kind
     FROM "DocumentChunk" dc
     JOIN "Document" d ON dc."documentId" = d.id
     WHERE d."userId" = ${userId}

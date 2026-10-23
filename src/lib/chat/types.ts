@@ -1,7 +1,9 @@
 /** 检索命中的一个片段 */
 export type RetrievedChunk = {
   content: string;
+  documentId: string;
   documentName: string;
+  kind: "TEXT" | "IMAGE";
 };
 
 /** 联网搜索返回的一条结果 */

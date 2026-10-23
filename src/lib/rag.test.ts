@@ -73,14 +73,28 @@ describe("findRelevantChunks（纯文字 → 当前用户文档）", () => {
     const sql = JSON.stringify(queryRawMock.mock.calls[0]);
     expect(sql).toContain(USER);
     expect(sql).toContain(MAX_DISTANCE);
+    expect(sql).toContain("documentId");
+    expect(sql).toContain("kind");
   });
 
   it("原样返回数据库命中的片段", async () => {
     stubFetch();
-    queryRawMock.mockResolvedValue([{ content: "c1", documentName: "a.md" }]);
+    queryRawMock.mockResolvedValue([
+      {
+        content: "c1",
+        documentId: "doc-1",
+        documentName: "a.md",
+        kind: "TEXT",
+      },
+    ]);
 
     await expect(findRelevantChunks(USER, "问题")).resolves.toEqual([
-      { content: "c1", documentName: "a.md" },
+      {
+        content: "c1",
+        documentId: "doc-1",
+        documentName: "a.md",
+        kind: "TEXT",
+      },
     ]);
   });
 
@@ -107,12 +121,22 @@ describe("findRelevantChunksForDocuments（附件范围）", () => {
   it("纯附件（无文字）取前 N 块，且按 userId + documentId 隔离", async () => {
     const fetchMock = stubFetch();
     findManyMock.mockResolvedValue([
-      { content: "块1", document: { name: "a.md" } },
+      {
+        content: "块1",
+        document: { id: DOC_A, name: "a.md", kind: "TEXT" },
+      },
     ]);
 
     const result = await findRelevantChunksForDocuments(USER, "", [DOC_A]);
 
-    expect(result).toEqual([{ content: "块1", documentName: "a.md" }]);
+    expect(result).toEqual([
+      {
+        content: "块1",
+        documentId: DOC_A,
+        documentName: "a.md",
+        kind: "TEXT",
+      },
+    ]);
     // 纯附件不做语义检索，不应调用 embedding
     expect(fetchMock).not.toHaveBeenCalled();
 
@@ -132,6 +156,8 @@ describe("findRelevantChunksForDocuments（附件范围）", () => {
     expect(sql).toContain(USER);
     expect(sql).toContain(DOC_A);
     expect(sql).toContain(MAX_DISTANCE);
+    expect(sql).toContain("documentId");
+    expect(sql).toContain("kind");
   });
 
   it("附件语义检索时 embedding 失败也视为无命中", async () => {

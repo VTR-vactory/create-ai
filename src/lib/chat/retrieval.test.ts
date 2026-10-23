@@ -28,7 +28,9 @@ beforeEach(() => {
 
 describe("retrieveChunks", () => {
   it("本地命中：即使开关开着也不联网", async () => {
-    userSearch.mockResolvedValue([{ content: "c", documentName: "a.md" }]);
+    userSearch.mockResolvedValue([
+      { content: "c", documentId: "doc-1", documentName: "a.md", kind: "TEXT" },
+    ]);
 
     const result = await retrieveChunks({
       userId: "u",
@@ -44,7 +46,9 @@ describe("retrieveChunks", () => {
   });
 
   it("有附件：只查附件范围，命中后 sourceTier=attachment", async () => {
-    docSearch.mockResolvedValue([{ content: "c", documentName: "a.md" }]);
+    docSearch.mockResolvedValue([
+      { content: "c", documentId: "doc-1", documentName: "a.md", kind: "TEXT" },
+    ]);
 
     const result = await retrieveChunks({
       userId: "u",

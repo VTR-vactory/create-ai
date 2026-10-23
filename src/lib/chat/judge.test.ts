@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+﻿import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { judgeAnswerable } from "./judge";
 
 const originalKey = process.env.ZHIPU_API_KEY;
@@ -44,7 +44,7 @@ describe("judgeAnswerable", () => {
 
     const verdict = await judgeAnswerable({
       question: "支持哪些格式？",
-      chunks: [{ content: "Markdown/TXT/CSV", documentName: "doc.md" }],
+      chunks: [{ content: "Markdown/TXT/CSV", documentId: "doc", documentName: "doc.md", kind: "TEXT" }],
     });
 
     expect(verdict.answerable).toBe(true);
@@ -59,7 +59,7 @@ describe("judgeAnswerable", () => {
 
     const verdict = await judgeAnswerable({
       question: "创始人是谁？",
-      chunks: [{ content: "产品说明", documentName: "doc.md" }],
+      chunks: [{ content: "产品说明", documentId: "doc", documentName: "doc.md", kind: "TEXT" }],
     });
 
     expect(verdict.answerable).toBe(false);
@@ -70,7 +70,7 @@ describe("judgeAnswerable", () => {
 
     const verdict = await judgeAnswerable({
       question: "q",
-      chunks: [{ content: "c", documentName: "d" }],
+      chunks: [{ content: "c", documentId: "doc", documentName: "d", kind: "TEXT" }],
     });
 
     expect(verdict.answerable).toBe(true);
@@ -82,7 +82,7 @@ describe("judgeAnswerable", () => {
     await expect(
       judgeAnswerable({
         question: "q",
-        chunks: [{ content: "c", documentName: "d" }],
+        chunks: [{ content: "c", documentId: "doc", documentName: "d", kind: "TEXT" }],
       }),
     ).rejects.toThrow("HTTP 500");
   });

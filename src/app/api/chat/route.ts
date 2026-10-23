@@ -121,15 +121,11 @@ export async function POST(request: Request) {
       useWebSearch: parsed.data.useWebSearch,
     });
 
-    // 结构化来源：编号与回答里的【1】【2】对应，随消息 metadata 下发给前端
-    const sources = webResults.map((item, index) => ({
-      index: index + 1,
-      title: item.title,
-      url: item.url,
-    }));
-
     // 8. 组装 Prompt：资料 / 网络结果进用户消息，instructions 只放规则
     const prompt = buildPrompt({ userText, attachmentNames, chunks, webResults });
+
+    // 结构化来源：本地文档/图片 + 网络结果，编号与回答里的 [1] 对应
+    const sources = prompt.sources;
 
     // 8.5 判断检索片段是否足以回答（纯附件总结跳过：附件内容本身就是回答对象）
     let judge: AnswerabilityVerdict | null = null;
