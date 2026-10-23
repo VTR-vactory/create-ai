@@ -1,7 +1,7 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { loadEnvFile } from "node:process";
 import { hash } from "bcryptjs";
 import { PrismaClient } from "@prisma/client";
@@ -23,6 +23,7 @@ const CHUNK_SIZE = manifest.chunkSize ?? 800;
 const CHUNK_OVERLAP = manifest.chunkOverlap ?? 120;
 const EMBEDDING_TIMEOUT_MS = 15_000;
 const EVAL_EMAIL = "eval@lumendesk.local";
+const DEFAULT_DEMO_PASSWORD = "12345678";
 
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL 未配置");
@@ -35,6 +36,10 @@ if (!process.env.ZHIPU_API_KEY) {
 
 const baseUrl =
   process.env.ZHIPU_BASE_URL ?? "https://open.bigmodel.cn/api/paas/v4";
+
+const { extractImageText, OcrError } = await import(
+  pathToFileURL(path.join(root, "src", "lib", "ocr.ts")).href
+);
 
 function splitText(text, size = CHUNK_SIZE, overlap = CHUNK_OVERLAP) {
   const normalized = text.replace(/\r\n/g, "\n").trim();
@@ -71,9 +76,11 @@ async function createEmbedding(input) {
   return embedding;
 }
 
-function mimeTypeOf(name) {
-  if (name.endsWith(".md")) return "text/markdown";
-  if (name.endsWith(".csv")) return "text/csv";
+function mimeTypeOf(file) {
+  if (file.mimeType) return file.mimeType;
+  if (file.name.endsWith(".md")) return "text/markdown";
+  if (file.name.endsWith(".csv")) return "text/csv";
+  if (file.name.endsWith(".png")) return "image/png";
   return "text/plain";
 }
 
@@ -82,28 +89,36 @@ const prisma = new PrismaClient();
 try {
   const corpus = [];
   for (const file of manifest.files) {
-    const content = await readFile(path.join(corpusDir, file.name), "utf8");
-    const sha256 = createHash("sha256").update(content).digest("hex");
-    if (sha256 !== file.sha256) {
+    const raw = await readFile(path.join(corpusDir, file.name));
+    const kind = file.kind === "IMAGE" ? "IMAGE" : "TEXT";
+    const content = kind === "IMAGE" ? raw.toString("base64") : raw.toString("utf8");
+    const rawHash = createHash("sha256").update(raw).digest("hex");
+
+    if (rawHash !== file.sha256) {
       throw new Error(
         `${file.name} 的 sha256 与 manifest 不一致，请先更新 manifest.json`,
       );
     }
-    corpus.push({ ...file, content });
+
+    corpus.push({
+      ...file,
+      kind,
+      content,
+      contentHash: createHash("sha256").update(content).digest("hex"),
+      size: raw.byteLength,
+    });
   }
 
-  const passwordHash = await hash(
-    process.env.EVAL_PASSWORD ?? randomUUID(),
-    10,
-  );
+  const password = process.env.EVAL_PASSWORD ?? DEFAULT_DEMO_PASSWORD;
+  const passwordHash = await hash(password, 10);
   const user = await prisma.user.upsert({
     where: { email: EVAL_EMAIL },
-    update: process.env.EVAL_PASSWORD ? { passwordHash } : {},
+    update: { passwordHash },
     create: { email: EVAL_EMAIL, name: "Eval Demo", passwordHash },
   });
 
   const names = corpus.map((file) => file.name);
-  const hashes = corpus.map((file) => file.sha256);
+  const hashes = corpus.map((file) => file.contentHash);
   await prisma.document.deleteMany({
     where: {
       userId: user.id,
@@ -120,14 +135,76 @@ try {
         userId: user.id,
         name: file.name,
         content: file.content,
-        size: Buffer.byteLength(file.content, "utf8"),
-        mimeType: mimeTypeOf(file.name),
-        contentHash: file.sha256,
+        size: file.size,
+        kind: file.kind,
+        mimeType: mimeTypeOf(file),
+        contentHash: file.contentHash,
         status: "PROCESSING",
       },
     });
 
-    const chunks = splitText(file.content);
+    let textContent = file.content;
+
+    if (file.kind === "IMAGE") {
+      try {
+        const models = [
+          process.env.ZHIPU_OCR_MODEL ?? "glm-4.6v-flash",
+          "glm-4v-flash",
+        ];
+        let ocr = null;
+        let lastError = null;
+
+        for (const model of models) {
+          try {
+            ocr = await extractImageText(file.content, {
+              model,
+              maxAttempts: 2,
+              timeoutMs: 12_000,
+              retryDelayMs: 1_500,
+            });
+            break;
+          } catch (error) {
+            lastError = error;
+            if (
+              error instanceof OcrError &&
+              error.code === "OCR_RATE_LIMITED"
+            ) {
+              console.warn(`[seed-eval] ${model} 限流，尝试下一个免费模型`);
+              continue;
+            }
+            throw error;
+          }
+        }
+
+        if (!ocr) throw lastError;
+
+        textContent = ocr.text;
+        await prisma.document.update({
+          where: { id: document.id },
+          data: { ocrText: ocr.text, ocrProvider: ocr.provider },
+        });
+      } catch (error) {
+        const message =
+          error instanceof OcrError ? error.message : "图片 OCR 失败";
+        await prisma.document.update({
+          where: { id: document.id },
+          data: { status: "FAILED", error: message, failedChunks: 0 },
+        });
+        console.error(`[seed-eval] ${file.name} OCR failed:`, message);
+        failedTotal += 1;
+        rows.push({
+          name: file.name,
+          kind: file.kind,
+          status: "FAILED",
+          chunks: 0,
+          failed: 0,
+          id: document.id,
+        });
+        continue;
+      }
+    }
+
+    const chunks = splitText(textContent);
     let failed = 0;
     let firstError = null;
 
@@ -161,6 +238,7 @@ try {
     failedTotal += failed;
     rows.push({
       name: file.name,
+      kind: file.kind,
       status,
       chunks: chunks.length,
       failed,
@@ -169,9 +247,12 @@ try {
   }
 
   console.log(`eval user: ${EVAL_EMAIL}`);
+  console.log(
+    `demo password: ${process.env.EVAL_PASSWORD ? "EVAL_PASSWORD" : DEFAULT_DEMO_PASSWORD}`,
+  );
   console.table(rows);
   if (failedTotal > 0) {
-    console.error(`完成，但有 ${failedTotal} 个 chunk 失败`);
+    console.error(`完成，但有 ${failedTotal} 个失败项`);
     process.exitCode = 1;
   } else {
     console.log("完成：语料已全部就绪");

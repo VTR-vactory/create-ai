@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-10-22T10:11:44.735Z",
-  "datasetId": "72148256f078",
+  "generatedAt": "2026-10-23T09:15:57.489Z",
+  "datasetId": "182f0044a859",
   "config": {
     "chunkSize": 800,
     "chunkOverlap": 120,
@@ -9,9 +9,9 @@
     "judgeModel": "glm-4-flash"
   },
   "metrics": {
-    "total": 10,
+    "total": 11,
     "retrievalRecall": 1,
-    "mrr": 0.9047619047619048,
+    "mrr": 0.8541666666666667,
     "keywordHitRate": 1,
     "refusalAccuracy": 1,
     "falseRefusalRate": 0,
@@ -19,11 +19,11 @@
     "isolationRate": 1,
     "judgeCallRate": 1,
     "retrievalP50Ms": 3,
-    "retrievalP95Ms": 8,
-    "judgeP50Ms": 3295,
-    "judgeP95Ms": 5211,
-    "promptTokens": 9318,
-    "completionTokens": 382
+    "retrievalP95Ms": 7,
+    "judgeP50Ms": 3172,
+    "judgeP95Ms": 5264,
+    "promptTokens": 9310,
+    "completionTokens": 404
   },
   "gates": [
     {
@@ -35,8 +35,8 @@
     },
     {
       "name": "MRR",
-      "value": 0.9047619047619048,
-      "display": "0.905",
+      "value": 0.8541666666666667,
+      "display": "0.854",
       "target": ">= 0.6",
       "pass": true
     },
@@ -70,7 +70,7 @@
       "hitDocs": [
         "01-product-zh.md",
         "02-api-en.md",
-        "03-limits.csv"
+        "04-ocr-demo.png"
       ],
       "hitCount": 5,
       "rank": 0,
@@ -122,11 +122,12 @@
       "scope": "user",
       "shouldAnswer": true,
       "hitDocs": [
+        "04-ocr-demo.png",
         "01-product-zh.md",
         "02-api-en.md"
       ],
-      "hitCount": 3,
-      "rank": 0,
+      "hitCount": 4,
+      "rank": 1,
       "keywordHit": true,
       "judgeAnswerable": true,
       "judgeReason": "退款说明：如果合同没有单独约定，默认按 14 个工作日处理；套餐表中有明确约定的，以套餐表为准。",
@@ -159,8 +160,8 @@
       "shouldAnswer": false,
       "hitDocs": [
         "01-product-zh.md",
-        "02-api-en.md",
-        "03-limits.csv"
+        "04-ocr-demo.png",
+        "02-api-en.md"
       ],
       "hitCount": 5,
       "rank": -1,
@@ -195,9 +196,10 @@
       "shouldAnswer": false,
       "hitDocs": [
         "01-product-zh.md",
+        "04-ocr-demo.png",
         "02-api-en.md"
       ],
-      "hitCount": 2,
+      "hitCount": 3,
       "rank": -1,
       "keywordHit": true,
       "judgeAnswerable": false,
@@ -236,6 +238,23 @@
       "keywordHit": true,
       "judgeAnswerable": true,
       "judgeReason": "资料片段中明确给出了Enterprise套餐的API每分钟请求上限是120。",
+      "judgeError": null,
+      "effectiveAnswerable": true,
+      "isolationOk": true,
+      "pass": true
+    },
+    {
+      "id": "q011",
+      "scope": "attachment",
+      "shouldAnswer": true,
+      "hitDocs": [
+        "04-ocr-demo.png"
+      ],
+      "hitCount": 1,
+      "rank": 0,
+      "keywordHit": true,
+      "judgeAnswerable": true,
+      "judgeReason": "退款周期明确给出为14个工作日。",
       "judgeError": null,
       "effectiveAnswerable": true,
       "isolationOk": true,

@@ -1,8 +1,8 @@
 # RAG 评测报告
 
-- 时间：2026-10-22T10:11:44.735Z
-- 数据集：`eval/dataset.jsonl`（sha256: `72148256f078`，10 条）
-- 语料：`01-product-zh.md`、`02-api-en.md`、`03-limits.csv`
+- 时间：2026-10-23T09:15:57.489Z
+- 数据集：`eval/dataset.jsonl`（sha256: `182f0044a859`，11 条）
+- 语料：`01-product-zh.md`、`02-api-en.md`、`03-limits.csv`、`04-ocr-demo.png`
 - 参数：chunk 800/120，Top-5，距离阈值 0.55
 - judge：`glm-4-flash`（失败时 fail-open）
 
@@ -11,7 +11,7 @@
 | 指标 | 结果 | 目标 | 状态 |
 |---|---|---|---|
 | Recall@5 | 100.0% | >= 80% | 通过 |
-| MRR | 0.905 | >= 0.6 | 通过 |
+| MRR | 0.854 | >= 0.6 | 通过 |
 | 拒答准确率 | 100.0% | >= 90% | 通过 |
 | 误拒率 | 0.0% | <= 10% | 通过 |
 | 附件隔离 | 100.0% | 100% | 通过 |
@@ -23,10 +23,10 @@
 
 | 指标 | P50 | P95 |
 |---|---|---|
-| 检索（ms） | 3 | 8 |
-| judge（ms） | 3295 | 5211 |
+| 检索（ms） | 3 | 7 |
+| judge（ms） | 3172 | 5264 |
 
-judge token 合计：prompt 9318 / completion 382
+judge token 合计：prompt 9310 / completion 404
 
 ## 逐条结果
 
@@ -35,13 +35,14 @@ judge token 合计：prompt 9318 / completion 382
 | q001 | user | 是 | 5 | 1 | ✓ | true | 是 | ✓ | ✓ |
 | q002 | user | 是 | 5 | 1 | ✓ | true | 是 | ✓ | ✓ |
 | q003 | user | 是 | 3 | 1 | ✓ | true | 是 | ✓ | ✓ |
-| q004 | user | 是 | 3 | 1 | ✓ | true | 是 | ✓ | ✓ |
+| q004 | user | 是 | 4 | 2 | ✓ | true | 是 | ✓ | ✓ |
 | q005 | user | 是 | 5 | 3 | ✓ | true | 是 | ✓ | ✓ |
 | q006 | user | 否 | 5 | - | - | false | 否 | ✓ | ✓ |
 | q007 | user | 否 | 1 | - | - | false | 否 | ✓ | ✓ |
-| q008 | user | 否 | 2 | - | - | false | 否 | ✓ | ✓ |
+| q008 | user | 否 | 3 | - | - | false | 否 | ✓ | ✓ |
 | q009 | attachment | 是 | 1 | 1 | ✓ | true | 是 | ✓ | ✓ |
 | q010 | attachment | 是 | 1 | 1 | ✓ | true | 是 | ✓ | ✓ |
+| q011 | attachment | 是 | 1 | 1 | ✓ | true | 是 | ✓ | ✓ |
 
 ## 说明
 

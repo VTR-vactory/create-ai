@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest",
     "test:run": "vitest run",
-    "seed:eval": "node scripts/seed-eval.mjs",
+    "seed:eval": "node --experimental-strip-types --no-warnings scripts/seed-eval.mjs",
     "check:eval": "node scripts/check-eval.mjs",
     "eval": "node --experimental-strip-types --no-warnings scripts/eval.mjs"
   },

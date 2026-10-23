@@ -8,3 +8,4 @@
 {"id":"q008","question":"Lumen Desk 2025 年的营收是多少？","scope":"user","shouldAnswer":false,"expectedDocNames":[]}
 {"id":"q009","question":"Enterprise 套餐的支持响应 SLA 是多少小时？","scope":"attachment","attachmentNames":["03-limits.csv"],"shouldAnswer":true,"expectedDocNames":["03-limits.csv"],"expectedKeywords":["support_sla_hours","4"]}
 {"id":"q010","question":"Enterprise 套餐的 API 每分钟请求上限是多少？","scope":"attachment","attachmentNames":["03-limits.csv"],"shouldAnswer":true,"expectedDocNames":["03-limits.csv"],"expectedKeywords":["api_rate_per_min","120"]}
+{"id":"q011","question":"这张图片里的退款周期是多少？","scope":"attachment","attachmentNames":["04-ocr-demo.png"],"shouldAnswer":true,"expectedDocNames":["04-ocr-demo.png"],"expectedKeywords":["14","工作日"]}

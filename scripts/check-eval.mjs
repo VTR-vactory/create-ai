@@ -79,20 +79,31 @@ try {
 
   const docs = await prisma.document.findMany({
     where: { userId: user.id },
-    select: { id: true, name: true, status: true },
+    select: { id: true, name: true, status: true, ocrText: true },
   });
   const byName = new Map(docs.map((doc) => [doc.name, doc]));
 
   for (const file of manifest.files) {
     const doc = byName.get(file.name);
+    const actualChunks = await prisma.documentChunk.count({
+      where: { documentId: doc?.id },
+    });
+
+    if (file.kind === "IMAGE") {
+      if (!doc || doc.status !== "READY" || !doc.ocrText?.trim() || actualChunks < 1) {
+        throw new Error(
+          `${file.name} 状态异常：status=${doc?.status} chunks=${actualChunks} ocr=${Boolean(doc?.ocrText?.trim())}`,
+        );
+      }
+      continue;
+    }
+
     const expectedChunks = splitText(
       await readFile(path.join(corpusDir, file.name), "utf8"),
       manifest.chunkSize,
       manifest.chunkOverlap,
     ).length;
-    const actualChunks = await prisma.documentChunk.count({
-      where: { documentId: doc?.id },
-    });
+
     if (!doc || doc.status !== "READY" || actualChunks !== expectedChunks) {
       throw new Error(
         `${file.name} 状态异常：status=${doc?.status} chunks=${actualChunks}/${expectedChunks}`,

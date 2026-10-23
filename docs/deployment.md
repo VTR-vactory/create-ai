@@ -77,6 +77,14 @@ git push
 > `.env` 默认指向本地库；跑 Neon 迁移时用终端临时 `export`/`$env:` 覆盖即可，
 > Prisma 不会覆盖已经存在的环境变量。Vercel 的环境变量在控制台单独配置。
 
+演示账号初始化（会写入 3 份文本 + 1 张 OCR 图片）：
+
+```bash
+npm run seed:eval
+```
+
+默认账号 `eval@lumendesk.local`，默认密码 `12345678`（可用 `EVAL_PASSWORD` 覆盖）。
+
 ## 4. 线上验收
 
 把 `<app>` 换成 Vercel 域名：
@@ -99,6 +107,7 @@ curl.exe -i  https://<app>/files          # 期望 307 -> /login
 8. 删除会话 → 「我的文件」里的文件仍在
 9. 连续发送 11 次 → 至少一次 429
 10. 上传超过 3MB 的图片 → 明确返回 413，而不是 500
+11. 对 FAILED / PARTIAL 文件点「重试」→ 状态回到 READY；卡住超过 10 分钟的 PROCESSING 也可重试
 
 ## 5. 日常更新
 

@@ -18,6 +18,13 @@
       "name": "03-limits.csv",
       "sha256": "6b3a459c134b1114de428456adb7b40b7a2482ea1f9b863ecde3e02a48b4da6f",
       "chars": 328
+    },
+    {
+      "name": "04-ocr-demo.png",
+      "sha256": "29e086e3c1bb8577b8ddae72ac5c27492c49c65b133e798088abd1d5d15dce05",
+      "bytes": 10461,
+      "kind": "IMAGE",
+      "mimeType": "image/png"
     }
   ]
 }
