@@ -6,6 +6,14 @@
 
 KnowFlow 让你把 Markdown / TXT / CSV 等资料变成可检索的知识库：提问时先检索你的资料，再由 GLM 流式回答；**本地没有依据时明确拒绝**，只有用户显式开启「联网搜索」才回退到 Tavily，并展示可点击来源。
 
+## 在线 Demo
+
+- 地址：https://create-ai-6ut3.onrender.com
+- 账号：`eval@lumendesk.local`
+- 密码：`12345678`
+
+> 当前部署在 Render 免费实例，**首次访问可能需要 30–60 秒唤醒**，打不开时刷新一次即可。后续会切回 Vercel。
+
 ## 功能
 
 - **账号**：注册 / 登录 / 退出（Auth.js v5，JWT + HttpOnly Cookie）
@@ -48,9 +56,9 @@ Next.js 16 App Router
 | 数据 | PostgreSQL + pgvector，Prisma 6 |
 | 认证 | Auth.js v5（Credentials） |
 | 限流 | Upstash Redis + Ratelimit |
-| 测试 | Vitest（34 个单测） |
+| 测试 | Vitest（69 个单测） |
 | CI | GitHub Actions |
-| 部署 | Vercel + Neon（Docker standalone 备用） |
+| 部署 | Render（当前演示，Docker）+ Neon；Vercel 备用 |
 
 ## 快速开始
 
@@ -126,9 +134,7 @@ TAVILY_API_KEY="..."            # 可选
 ## 工程与交付
 
 - [完整研发与交付流程](docs/workflow.md)：开发 → CI → 自动部署 → 迁移 → 验收 → 回滚
-- [部署手册](docs/deployment.md)：Vercel + Neon 的环境变量与上线步骤
-
-部署后可在 README 补充线上地址。
+- [部署手册](docs/deployment.md)：Vercel + Neon 的环境变量与上线步骤（当前演示临时运行在 Render，后续切回 Vercel）
 
 ## 设计取舍与限制
 
