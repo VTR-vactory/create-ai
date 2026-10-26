@@ -171,6 +171,8 @@ function ChatContent({ user }: { user: ChatUser }) {
     status === "error" && messages.some((message) => message.role === "user");
 
   const busy = status === "streaming" || status === "submitted";
+  const loadingChatsRef = useRef(false);
+  const creatingChatRef = useRef(false);
 
   // 待挂载的附件：用户消息一出现就立刻显示，无需等 AI 完成
   const pendingAttachmentsRef = useRef<
@@ -178,6 +180,10 @@ function ChatContent({ user }: { user: ChatUser }) {
   >(null);
 
   async function loadChats() {
+    // React StrictMode 会重复执行 effect；加锁避免两个请求都看到空列表后各建一个会话
+    if (loadingChatsRef.current) return;
+    loadingChatsRef.current = true;
+
     try {
       setLoadingChats(true);
       const data = await getJson<ChatSummary[]>("api/chats");
@@ -187,6 +193,7 @@ function ChatContent({ user }: { user: ChatUser }) {
       } else await createChat();
     } catch {
     } finally {
+      loadingChatsRef.current = false;
       setLoadingChats(false);
     }
   }
@@ -214,22 +221,25 @@ function ChatContent({ user }: { user: ChatUser }) {
   }
 
   async function createChat() {
-    if (busy) return;
+    if (creatingChatRef.current || busy) return;
+    creatingChatRef.current = true;
+
     try {
       const chat = await postJson<ChatSummary>("/api/chats", {});
       setChats((prev) => [chat, ...prev]);
       // 👇 新增：新建会话时同样清空
       lastAttachmentIdsRef.current = [];
-      // 👇 顺手修复你之前的逻辑小瑕疵：给 selectChat 加上 await，保证顺序
+      // 给 selectChat 加上 await，保证顺序
       await selectChat(chat.id);
 
-      selectChat(chat.id);
       setMessages([]);
       setError(null);
     } catch (createError) {
       setError(
         createError instanceof Error ? createError.message : "创建对话失败。",
       );
+    } finally {
+      creatingChatRef.current = false;
     }
   }
 
