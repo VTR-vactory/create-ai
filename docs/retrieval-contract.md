@@ -49,7 +49,7 @@ if (attachments.length > 0) {
   if (!userText) {
     chunks = firstChunksOfDocuments(attachments, N); // 场景 2
   } else {
-    chunks = searchInDocuments(userId, userText, attachmentIds); // 场景 1
+    chunks = searchInDocuments(userId, userText, attachmentIds); // 场景 1；语义为空时回退附件前 N 块
   }
 } else {
   chunks = searchUserDocuments(userId, userText);      // 场景 3
@@ -81,7 +81,8 @@ knowledge = render(chunks, webResults);
 - 检索范围：`DocumentChunk.documentId IN attachmentIds AND Document.userId = userId`
 - 相似度：余弦距离 `<=> <= MAX_COSINE_DISTANCE`
 - Top K：`limit = 5`
-- 无命中 → 进入场景 4 判断
+- 语义检索为空时：回退到该附件的**前 5 块**（仍限定附件范围，不查用户其他文档）
+- 附件本身没有 chunk（例如 OCR 失败）→ 进入场景 4 判断
 
 ### 场景 2：仅附件
 - 不做语义检索（没有问题文本）

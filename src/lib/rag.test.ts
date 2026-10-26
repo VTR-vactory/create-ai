@@ -23,6 +23,7 @@ const DOC_A = "doc-a";
 const MAX_DISTANCE = "0.55";
 
 vi.spyOn(console, "warn").mockImplementation(() => {});
+vi.spyOn(console, "log").mockImplementation(() => {});
 
 function stubFetch() {
   const fetchMock = vi.fn(async () => ({
@@ -48,6 +49,7 @@ beforeEach(() => {
   queryRawMock.mockReset();
   findManyMock.mockReset();
   queryRawMock.mockResolvedValue([]);
+  findManyMock.mockResolvedValue([]);
 });
 
 afterEach(() => {
@@ -158,6 +160,38 @@ describe("findRelevantChunksForDocuments（附件范围）", () => {
     expect(sql).toContain(MAX_DISTANCE);
     expect(sql).toContain("documentId");
     expect(sql).toContain("kind");
+  });
+
+  it("语义检索为空时回退到附件前 N 块", async () => {
+    stubFetch();
+    queryRawMock.mockResolvedValue([]);
+    findManyMock.mockResolvedValue([
+      {
+        content: "OCR 文本",
+        document: { id: DOC_A, name: "receipt.png", kind: "IMAGE" },
+      },
+    ]);
+
+    const result = await findRelevantChunksForDocuments(
+      USER,
+      "图片上内容是什么",
+      [DOC_A],
+    );
+
+    expect(result).toEqual([
+      {
+        content: "OCR 文本",
+        documentId: DOC_A,
+        documentName: "receipt.png",
+        kind: "IMAGE",
+      },
+    ]);
+
+    const args = findManyMock.mock.calls[0][0];
+    expect(args.where).toMatchObject({
+      documentId: { in: [DOC_A] },
+      document: { userId: USER },
+    });
   });
 
   it("附件语义检索时 embedding 失败也视为无命中", async () => {

@@ -182,12 +182,41 @@ export async function findRelevantChunks(
 }
 
 /**
+ * 按创建顺序取指定文档的前 N 块。
+ * 仅用于附件范围，仍带 userId 校验。
+ */
+async function findFirstChunksOfDocuments(
+  userId: string,
+  documentIds: string[],
+  limit: number,
+) {
+  const chunks = await prisma.documentChunk.findMany({
+    where: { documentId: { in: documentIds }, document: { userId } },
+    select: {
+      content: true,
+      document: { select: { id: true, name: true, kind: true } },
+    },
+    orderBy: [{ documentId: "asc" }, { createdAt: "asc" }],
+    take: limit,
+  });
+
+  return chunks.map((chunk) => ({
+    content: chunk.content,
+    documentId: chunk.document.id,
+    documentName: chunk.document.name,
+    kind: chunk.document.kind,
+  }));
+}
+
+/**
  * 只在指定的若干文档（会话附件）范围内检索。
  *
  * 与全量检索的区别：
  * - 范围锁定在 documentIds（且仍校验 userId，防止越权）
- * - 纯附件提问（没有问题文本）时不做语义检索，直接取附件的前几块，
- *   让模型能读到文件内容，而不是返回空
+ * - 纯附件提问（没有问题文本）时不做语义检索，直接取附件的前几块
+ * - 有文字但语义检索为空时，也回退到附件前几块：
+ *   「图片上内容是什么」这类泛化问题与 OCR 文本距离可能超过阈值，
+ *   但用户已经明确挂载了附件，应让模型读到附件内容
  */
 export async function findRelevantChunksForDocuments(
   userId: string,
@@ -199,21 +228,7 @@ export async function findRelevantChunksForDocuments(
 
   // 纯附件（无文字）：按创建顺序取前 limit 块，无需 embedding
   if (!query.trim()) {
-    const chunks = await prisma.documentChunk.findMany({
-      where: { documentId: { in: documentIds }, document: { userId } },
-      select: {
-        content: true,
-        document: { select: { id: true, name: true, kind: true } },
-      },
-      orderBy: [{ documentId: "asc" }, { createdAt: "asc" }],
-      take: limit,
-    });
-    return chunks.map((chunk) => ({
-      content: chunk.content,
-      documentId: chunk.document.id,
-      documentName: chunk.document.name,
-      kind: chunk.document.kind,
-    }));
+    return findFirstChunksOfDocuments(userId, documentIds, limit);
   }
 
   let queryVector: number[];
@@ -229,7 +244,7 @@ export async function findRelevantChunksForDocuments(
 
   const vectorStr = `[${queryVector.join(",")}]`;
 
-  return await prisma.$queryRaw<RawChunkResult[]>`
+  const rows = await prisma.$queryRaw<RawChunkResult[]>`
     SELECT dc.content,
            d.id AS "documentId",
            d.name AS "documentName",
@@ -242,4 +257,13 @@ export async function findRelevantChunksForDocuments(
     ORDER BY dc.embedding <=> ${vectorStr}::vector
     LIMIT ${limit};
   `;
+
+  if (rows.length > 0) return rows;
+
+  console.log("[rag] attachment semantic miss; fallback to first chunks", {
+    documentCount: documentIds.length,
+    queryLength: query.length,
+  });
+
+  return findFirstChunksOfDocuments(userId, documentIds, limit);
 }
