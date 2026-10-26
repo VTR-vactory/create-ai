@@ -1,13 +1,15 @@
-# 部署手册：Vercel + Neon
+# 部署手册：Vercel / Render + Neon
 
 > 目标：把 `create-ai` 部署到公网，并完成线上验收。
 > 本文不包含任何真实密钥；变量值请从本地 `.env` / Neon 控制台复制。
 
-## 0. 当前状态（已完成）
+## 0. 当前状态
 
 - 代码仓库：`https://github.com/VTR-vactory/create-ai`（public，分支 `main`）
 - CI：`.github/workflows/ci.yml`（install → prisma generate → lint → typecheck → test → build）
 - 数据库：Neon（10 个迁移已应用，`vector` 扩展已启用，含图片 OCR 字段）
+- 当前演示：Render（Docker，免费实例）`https://create-ai-6ut3.onrender.com`
+- Vercel：账号审核中，通过后可切回
 - 本地：`npm run dev`
 
 ## 1. Vercel 环境变量
@@ -20,9 +22,10 @@
 | `DIRECT_URL` | Neon **Direct** 连接串（迁移用） |
 | `AUTH_SECRET` | 新的随机值（`openssl rand -base64 32`） |
 | `AUTH_TRUST_HOST` | `true` |
+| `AUTH_URL` | 部署域名，例如 `https://<app>.vercel.app` 或 Render 域名 |
 | `ZHIPU_API_KEY` | 智谱 API Key |
 | `ZHIPU_BASE_URL` | `https://open.bigmodel.cn/api/paas/v4` |
-| `ZHIPU_OCR_MODEL` | `glm-4.6v-flash`（图片 OCR，免费但有限流） |
+| `ZHIPU_OCR_MODEL` | `glm-4v-flash`（免费；4.6V 限流时更稳定） |
 | `UPSTASH_REDIS_REST_URL` | Upstash Redis REST URL |
 | `UPSTASH_REDIS_REST_TOKEN` | Upstash Redis REST Token |
 | `TAVILY_API_KEY` | Tavily 搜索 Key |
@@ -35,15 +38,102 @@
 2. **Add New → Project → Import Git Repository**，选择 `VTR-vactory/create-ai`。
 3. Framework Preset：**Next.js**（自动识别），Root Directory：`./`。
 4. Build Command / Output：保持默认（`npm run build` 已包含 `prisma generate`）。
-5. 添加上面 10 个环境变量。
+5. 添加上面 11 个环境变量（`AUTH_URL` 可等域名生成后再补）。
 6. **Deploy**。
-7. 记录线上地址 `https://<app>.vercel.app`。
+7. 记录线上地址，回到环境变量补 `AUTH_URL=https://<域名>`，再 Redeploy。
 
 > Vercel Function 请求体上限为 **4.5MB**。当前上传限制为：图片 3MB、文本 1MB、单次总大小 4MB。
 > 超过限制会在进入代码前直接 413；不要为了大文件把限制改回 5MB/8MB。
 
-> `next.config.ts` 已按环境条件化：Vercel 不生成 standalone，Docker/Railway 仍保留。
+> `next.config.ts` 已按环境条件化：Vercel 不生成 standalone，Docker / Render / Railway 仍保留。
 > Prisma 已包含 `rhel-openssl-3.0.x`，用于 Vercel 的 Amazon Linux 运行时。
+
+## 2.5 临时部署：Render（当前使用）
+
+Vercel 审核期间使用 Render；代码、Neon、环境变量基本不变。
+
+### 2.5.1 创建 Web Service
+
+1. 打开 https://render.com，用 GitHub 登录
+2. **New → Web Service**
+3. 连接仓库 `VTR-vactory/create-ai`
+   - GitHub App 权限建议选 **Only select repositories**
+4. 配置：
+   - Runtime：**Docker**
+   - Branch：`main`
+   - Root Directory：留空
+   - Region：**Ohio (US East)**（离 Neon `us-east-2` 更近）
+   - Instance Type：**Free**（会休眠；简历链接可接受首次刷新）
+5. 环境变量：
+   - 保留 Render 自带的 `PORT`，不要删
+   - 其余与 Vercel 相同的 11 个变量
+   - `AUTH_URL` 先留空，等域名生成后补
+6. 点击 **Deploy web service**
+7. 等 Deploys 状态变为 **Live**
+
+### 2.5.2 域名与 AUTH_URL
+
+1. Live 后复制服务域名，例如：
+
+```text
+https://create-ai-6ut3.onrender.com
+```
+
+2. Environment → 添加：
+
+```text
+AUTH_URL=https://create-ai-6ut3.onrender.com
+```
+
+3. **Save, rebuild, and deploy**
+4. 等新的部署再次 Live
+
+### 2.5.3 数据与迁移
+
+- Neon 已应用 10 个迁移，不需要在 Render 容器里跑迁移
+- **不要在 Render Shell 里跑 `seed:eval`**：容器是运行时镜像，依赖和 Node 版本不适合
+- 在本地对 Neon 执行：
+
+```bash
+export DATABASE_URL="<Neon Pooled>"
+export DIRECT_URL="<Neon Direct>"
+npm run seed:eval
+```
+
+演示账号：
+
+```text
+eval@lumendesk.local / 12345678
+```
+
+### 2.5.4 Render 验收
+
+```bash
+curl -I  https://<domain>/login          # 200
+curl -i  https://<domain>/api/chats      # 401
+curl -i  https://<domain>/files          # 307 -> /login
+```
+
+浏览器：
+
+1. 登录 demo 账号
+2. `/files` 看到 4 份资料，图片 OCR 可检索
+3. 新建对话只出现一个
+4. 文本问题返回 `[1]` 且可点击
+5. 无依据问题返回固定文案
+6. 图片附件返回「图片：xxx（OCR）」来源
+7. 刷新后历史引用仍可点
+
+### 2.5.5 Render 常见故障
+
+| 现象 | 排查 |
+|---|---|
+| `404` + `x-render-routing: no-server` | 新部署还在切换或实例崩溃；等 Live，必要时 Manual Deploy → Clear build cache |
+| Prisma 报 URL 必须以 `postgresql://` 开头 | 环境变量值带了引号/占位符/空格；重新粘贴 Neon Pooled 字符串 |
+| 登录回调失败 | `AUTH_URL` 与当前域名不一致；改成实际域名并 Redeploy |
+| Build 报 heap out of memory | 免费 512MB 不足；清缓存重试，仍失败则升级实例或换平台 |
+| 首次访问很慢 | 免费实例休眠，30–60 秒唤醒；刷新即可 |
+| 上传图片 OCR 429 | `ZHIPU_OCR_MODEL=glm-4v-flash` |
 
 ## 3. 数据库迁移（首次已做过，后续变更时用）
 
@@ -87,7 +177,7 @@ npm run seed:eval
 
 ## 4. 线上验收
 
-把 `<app>` 换成 Vercel 域名：
+把 `<app>` 换成当前域名（Render 或 Vercel）：
 
 ```powershell
 curl.exe -I  https://<app>/login          # 期望 200
@@ -147,8 +237,9 @@ Vercel 每次 push 到 `main` 都会生成新部署；CI 失败不会阻止 Verc
 
 ## 9. 简历素材（部署后）
 
-> 已部署至 Vercel（Neon PostgreSQL + pgvector、Upstash Redis、GLM-4.6V-Flash OCR），线上 Demo：`https://<app>.vercel.app`；
-> 通过 GitHub Actions 执行 lint / typecheck / 64 个单测 / build 的持续集成。
+> 当前部署在 Render（Docker + Neon PostgreSQL + pgvector、Upstash Redis、GLM-4V-Flash OCR），
+> 线上 Demo：`https://create-ai-6ut3.onrender.com`；Vercel 审核通过后切换。
+> 通过 GitHub Actions 执行 lint / typecheck / 69 个单测 / build 的持续集成。
 > 支持图片 OCR 入库、无依据拒答，以及文本/图片/联网来源的可点击引用。
 
-（拿到线上地址后替换 `<app>`。）
+（该地址为当前演示地址；切换 Vercel 后同步更新 README 与本文。）
