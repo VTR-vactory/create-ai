@@ -70,7 +70,7 @@ export async function judgeAnswerable(params: {
   const context = params.chunks
     .map(
       (chunk, index) =>
-        `[片段 ${index + 1}｜${chunk.documentName}]\n${chunk.content}`,
+        `[片段 ${index + 1}｜${chunk.kind === "IMAGE" ? "图片 OCR" : "文本文档"}｜${chunk.documentName}]\n${chunk.content}`,
     )
     .join("\n\n")
     .slice(0, MAX_CONTEXT_CHARS);
@@ -91,6 +91,9 @@ export async function judgeAnswerable(params: {
             "你是检索质量判定器。",
             "只根据给出的资料片段判断：片段中是否包含回答问题所需的明确事实。",
             "不要使用外部知识，不要推测，不要因为主题相关就判 true。",
+            "如果问题要求描述、总结或读出附件/图片的内容，而片段包含该附件的正文或 OCR 文本，应判 true。",
+            "片段本身就是资料，不要求片段里直接出现问题的原句。",
+            "只有片段完全缺少回答所需事实时才判 false。",
             '只输出 JSON：{"answerable": true, "reason": "一句话理由"} 或 {"answerable": false, "reason": "一句话理由"}。',
           ].join("\n"),
         },
